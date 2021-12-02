@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
 	"log"
 	"net/http"
 	"os"
@@ -11,11 +9,14 @@ import (
 	"strconv"
 	"syscall"
 
-	h "github.com/tensor-programming/hex-microservice/api"
-	mr "github.com/tensor-programming/hex-microservice/repository/mongo"
-	rr "github.com/tensor-programming/hex-microservice/repository/redis"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 
-	"github.com/tensor-programming/hex-microservice/shortener"
+	h "hex-microservice/api"
+	mr "hex-microservice/repository/mongo"
+	rr "hex-microservice/repository/redis"
+
+	"hex-microservice/shortener"
 )
 
 // https://www.google.com -> 98sj1-293

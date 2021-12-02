@@ -3,13 +3,14 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/vmihailenco/msgpack"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 
-	"github.com/tensor-programming/hex-microservice/shortener"
+	"github.com/vmihailenco/msgpack"
+
+	"hex-microservice/shortener"
 )
 
 func httpPort() string {
