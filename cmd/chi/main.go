@@ -2,21 +2,21 @@ package main
 
 import (
 	"fmt"
+	"hex-microservice/shortener"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	chi "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	h "hex-microservice/api"
 	mr "hex-microservice/repository/mongo"
 	rr "hex-microservice/repository/redis"
-
-	"hex-microservice/shortener"
 )
 
 // https://www.google.com -> 98sj1-293
@@ -42,7 +42,6 @@ func main() {
 	go func() {
 		fmt.Println("Listening on port :8000")
 		errs <- http.ListenAndServe(httpPort(), r)
-
 	}()
 
 	go func() {
@@ -52,7 +51,6 @@ func main() {
 	}()
 
 	fmt.Printf("Terminated %s", <-errs)
-
 }
 
 func httpPort() string {
@@ -60,6 +58,7 @@ func httpPort() string {
 	if os.Getenv("PORT") != "" {
 		port = os.Getenv("PORT")
 	}
+
 	return fmt.Sprintf(":%s", port)
 }
 
@@ -76,11 +75,12 @@ func chooseRepo() shortener.RedirectRepository {
 		mongoURL := os.Getenv("MONGO_URL")
 		mongodb := os.Getenv("MONGO_DB")
 		mongoTimeout, _ := strconv.Atoi(os.Getenv("MONGO_TIMEOUT"))
-		repo, err := mr.NewMongoRepository(mongoURL, mongodb, mongoTimeout)
+		repo, err := mr.NewMongoRepository(mongoURL, mongodb, time.Duration(mongoTimeout*int(time.Second)))
 		if err != nil {
 			log.Fatal(err)
 		}
 		return repo
 	}
+
 	return nil
 }

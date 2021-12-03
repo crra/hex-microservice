@@ -2,75 +2,84 @@ package redis
 
 import (
 	"fmt"
+	"hex-microservice/shortener"
 	"strconv"
 
 	"github.com/go-redis/redis"
-	"github.com/pkg/errors"
+)
 
-	"hex-microservice/shortener"
+const (
+	key_code       = "code"
+	key_url        = "url"
+	key_created_at = "created_at"
 )
 
 type redisRepository struct {
 	client *redis.Client
 }
 
-func newRedisClient(redisURL string) (*redis.Client, error) {
-	opts, err := redis.ParseURL(redisURL)
+func newRedisClient(URL string) (*redis.Client, error) {
+	opts, err := redis.ParseURL(URL)
 	if err != nil {
 		return nil, err
 	}
 	client := redis.NewClient(opts)
-	_, err = client.Ping().Result()
-	if err != nil {
+	if _, err := client.Ping().Result(); err != nil {
 		return nil, err
 	}
+
 	return client, nil
 }
 
-func NewRedisRepository(redisURL string) (shortener.RedirectRepository, error) {
-	repo := &redisRepository{}
-	client, err := newRedisClient(redisURL)
+func NewRedisRepository(url string) (shortener.RedirectRepository, error) {
+	client, err := newRedisClient(url)
 	if err != nil {
-		return nil, errors.Wrap(err, "repository.NewRedisRepository")
+		return nil, fmt.Errorf("repository.NewRedisRepository: %w", err)
 	}
-	repo.client = client
-	return repo, nil
+
+	return &redisRepository{
+		client: client,
+	}, nil
 }
 
-func (r *redisRepository) generateKey(code string) string {
+func generateKey(code string) string {
 	return fmt.Sprintf("redirect:%s", code)
 }
 
 func (r *redisRepository) Find(code string) (*shortener.Redirect, error) {
-	redirect := &shortener.Redirect{}
-	key := r.generateKey(code)
+	key := generateKey(code)
 	data, err := r.client.HGetAll(key).Result()
 	if err != nil {
-		return nil, errors.Wrap(err, "repository.Redirect.Find")
+		return nil, fmt.Errorf("repository.Redirect.Find: %w", err)
 	}
 	if len(data) == 0 {
-		return nil, errors.Wrap(shortener.ErrRedirectNotFound, "repository.Redirect.Find")
+		return nil, shortener.ErrRedirectNotFound
 	}
-	createdAt, err := strconv.ParseInt(data["created_at"], 10, 64)
+
+	createdAt, err := strconv.ParseInt(data[key_created_at], 10, 64)
 	if err != nil {
-		return nil, errors.Wrap(err, "repository.Redirect.Find")
+		return nil, fmt.Errorf("repository.Redirect.Find: %w", err)
 	}
-	redirect.Code = data["code"]
-	redirect.URL = data["url"]
-	redirect.CreatedAt = createdAt
-	return redirect, nil
+
+	return &shortener.Redirect{
+		Code:      data[key_code],
+		URL:       data[key_url],
+		CreatedAt: createdAt,
+	}, nil
 }
 
 func (r *redisRepository) Store(redirect *shortener.Redirect) error {
-	key := r.generateKey(redirect.Code)
+	key := generateKey(redirect.Code)
+
 	data := map[string]interface{}{
-		"code":       redirect.Code,
-		"url":        redirect.URL,
-		"created_at": redirect.CreatedAt,
+		key_code:       redirect.Code,
+		key_url:        redirect.URL,
+		key_created_at: redirect.CreatedAt,
 	}
-	_, err := r.client.HMSet(key, data).Result()
-	if err != nil {
-		return errors.Wrap(err, "repository.Redirect.Store")
+
+	if _, err := r.client.HMSet(key, data).Result(); err != nil {
+		return fmt.Errorf("repository.Redirect.Store: %w", err)
 	}
+
 	return nil
 }

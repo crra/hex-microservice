@@ -1,16 +1,16 @@
 package api
 
 import (
+	"errors"
+	"hex-microservice/shortener"
 	"io/ioutil"
 	"log"
 	"net/http"
 
-	"github.com/go-chi/chi"
-	"github.com/pkg/errors"
-
 	js "hex-microservice/serializer/json"
 	ms "hex-microservice/serializer/msgpack"
-	"hex-microservice/shortener"
+
+	chi "github.com/go-chi/chi/v5"
 )
 
 type RedirectHandler interface {
@@ -23,14 +23,15 @@ type handler struct {
 }
 
 func NewHandler(redirectService shortener.RedirectService) RedirectHandler {
-	return &handler{redirectService: redirectService}
+	return &handler{
+		redirectService: redirectService,
+	}
 }
 
-func setupResponse(w http.ResponseWriter, contentType string, body []byte, statusCode int) {
+func writeResponse(w http.ResponseWriter, contentType string, body []byte, statusCode int) {
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(statusCode)
-	_, err := w.Write(body)
-	if err != nil {
+	if _, err := w.Write(body); err != nil {
 		log.Println(err)
 	}
 }
@@ -39,48 +40,57 @@ func (h *handler) serializer(contentType string) shortener.RedirectSerializer {
 	if contentType == "application/x-msgpack" {
 		return &ms.Redirect{}
 	}
+
 	return &js.Redirect{}
 }
 
 func (h *handler) Get(w http.ResponseWriter, r *http.Request) {
-	code := chi.URLParam(r, "code")
+	code := chi.URLParam(r, "code") // TODO: remove
 	redirect, err := h.redirectService.Find(code)
 	if err != nil {
-		if errors.Cause(err) == shortener.ErrRedirectNotFound {
-			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
-			return
+		status := http.StatusInternalServerError
+
+		if errors.Is(err, shortener.ErrRedirectNotFound) {
+			status = http.StatusNotFound
 		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
+
 	http.Redirect(w, r, redirect.URL, http.StatusMovedPermanently)
 }
 
 func (h *handler) Post(w http.ResponseWriter, r *http.Request) {
-	contentType := r.Header.Get("Content-Type")
 	requestBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
+
+	contentType := r.Header.Get("Content-Type")
 	redirect, err := h.serializer(contentType).Decode(requestBody)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	err = h.redirectService.Store(redirect)
-	if err != nil {
-		if errors.Cause(err) == shortener.ErrRedirectInvalid {
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-			return
+
+	if err = h.redirectService.Store(redirect); err != nil {
+		status := http.StatusInternalServerError
+
+		if errors.Is(err, shortener.ErrRedirectInvalid) {
+			status = http.StatusBadRequest
 		}
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
+
 	responseBody, err := h.serializer(contentType).Encode(redirect)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	setupResponse(w, contentType, responseBody, http.StatusCreated)
+
+	writeResponse(w, contentType, responseBody, http.StatusCreated)
 }

@@ -1,9 +1,9 @@
 package msgpack
 
 import (
+	"fmt"
 	"hex-microservice/shortener"
 
-	"github.com/pkg/errors"
 	"github.com/vmihailenco/msgpack"
 )
 
@@ -12,15 +12,17 @@ type Redirect struct{}
 func (r *Redirect) Decode(input []byte) (*shortener.Redirect, error) {
 	redirect := &shortener.Redirect{}
 	if err := msgpack.Unmarshal(input, redirect); err != nil {
-		return nil, errors.Wrap(err, "serializer.Redirect.Decode")
+		return nil, fmt.Errorf("serializer.Redirect.Decode: %w", err)
 	}
+
 	return redirect, nil
 }
 
 func (r *Redirect) Encode(input *shortener.Redirect) ([]byte, error) {
-	rawMsg, err := msgpack.Marshal(input)
+	raw, err := msgpack.Marshal(input)
 	if err != nil {
-		return nil, errors.Wrap(err, "serializer.Redirect.Encode")
+		return nil, fmt.Errorf("serializer.Redirect.Encode: %w", err)
 	}
-	return rawMsg, nil
+
+	return raw, nil
 }
