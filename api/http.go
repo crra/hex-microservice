@@ -9,9 +9,9 @@ import (
 
 	js "hex-microservice/serializer/json"
 	ms "hex-microservice/serializer/msgpack"
-
-	chi "github.com/go-chi/chi/v5"
 )
+
+type ParamFn func(r *http.Request, key string) string
 
 type RedirectHandler interface {
 	Get(http.ResponseWriter, *http.Request)
@@ -19,11 +19,13 @@ type RedirectHandler interface {
 }
 
 type handler struct {
+	paramFn         ParamFn
 	redirectService shortener.RedirectService
 }
 
-func NewHandler(redirectService shortener.RedirectService) RedirectHandler {
+func NewHandler(redirectService shortener.RedirectService, paramFn ParamFn) RedirectHandler {
 	return &handler{
+		paramFn:         paramFn,
 		redirectService: redirectService,
 	}
 }
@@ -45,7 +47,7 @@ func (h *handler) serializer(contentType string) shortener.RedirectSerializer {
 }
 
 func (h *handler) Get(w http.ResponseWriter, r *http.Request) {
-	code := chi.URLParam(r, "code") // TODO: remove
+	code := h.paramFn(r, "code")
 	redirect, err := h.redirectService.Find(code)
 	if err != nil {
 		status := http.StatusInternalServerError

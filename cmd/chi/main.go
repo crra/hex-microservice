@@ -27,7 +27,7 @@ import (
 func main() {
 	repo := chooseRepo()
 	service := shortener.NewRedirectService(repo)
-	handler := h.NewHandler(service)
+	handler := h.NewHandler(service, chi.URLParam)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
