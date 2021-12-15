@@ -1,0 +1,1 @@
+If docker is running behind a corporate proxy and the proxy provides man-in-the-middle certificate repacking, place your `.crt` here to copy them to all containers.
