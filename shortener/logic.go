@@ -7,6 +7,7 @@ import (
 
 	validate "gopkg.in/dealancer/validate.v2"
 
+	"github.com/go-logr/logr"
 	"github.com/teris-io/shortid"
 )
 
@@ -15,21 +16,23 @@ var (
 	ErrRedirectInvalid  = errors.New("Redirect Invalid")
 )
 
-type redirectService struct {
-	redirectRepo RedirectRepository
+type service struct {
+	log        logr.Logger
+	repository Repository
 }
 
-func NewRedirectService(redirectRepo RedirectRepository) RedirectService {
-	return &redirectService{
-		redirectRepo: redirectRepo,
+func NewRedirectService(log logr.Logger, redirectRepo Repository) Service {
+	return &service{
+		log:        log,
+		repository: redirectRepo,
 	}
 }
 
-func (r *redirectService) Find(code string) (*Redirect, error) {
-	return r.redirectRepo.Find(code)
+func (r *service) Find(code string) (*Redirect, error) {
+	return r.repository.Find(code)
 }
 
-func (r *redirectService) Store(redirect *Redirect) error {
+func (r *service) Store(redirect *Redirect) error {
 	if err := validate.Validate(redirect); err != nil {
 		return fmt.Errorf("service.Redirect: %w", ErrRedirectInvalid)
 	}
@@ -37,5 +40,5 @@ func (r *redirectService) Store(redirect *Redirect) error {
 	redirect.Code = shortid.MustGenerate()
 	redirect.CreatedAt = time.Now().UTC().Unix()
 
-	return r.redirectRepo.Store(redirect)
+	return r.repository.Store(redirect)
 }

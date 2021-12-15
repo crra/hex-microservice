@@ -1,4 +1,4 @@
-package api
+package service
 
 import (
 	"errors"
@@ -9,6 +9,8 @@ import (
 
 	js "hex-microservice/serializer/json"
 	ms "hex-microservice/serializer/msgpack"
+
+	"github.com/go-logr/logr"
 )
 
 type ParamFn func(r *http.Request, key string) string
@@ -19,12 +21,14 @@ type RedirectHandler interface {
 }
 
 type handler struct {
+	log             logr.Logger
 	paramFn         ParamFn
-	redirectService shortener.RedirectService
+	redirectService shortener.Service
 }
 
-func NewHandler(redirectService shortener.RedirectService, paramFn ParamFn) RedirectHandler {
+func New(log logr.Logger, redirectService shortener.Service, paramFn ParamFn) RedirectHandler {
 	return &handler{
+		log:             log,
 		paramFn:         paramFn,
 		redirectService: redirectService,
 	}
