@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
-	handler "hex-microservice/http"
-	"hex-microservice/shortener"
+	"hex-microservice/adder"
+	"hex-microservice/deleter"
+	httpservice "hex-microservice/http"
+	"hex-microservice/lookup"
 	"net/http"
 
 	"github.com/go-logr/logr"
@@ -12,21 +14,22 @@ import (
 
 // adapt takes a regular http.HandlerFunc and adapts it to use with httprouter.Handle.
 func adapt(h http.HandlerFunc) httprouter.Handle {
-	return func(rw http.ResponseWriter, r *http.Request, p httprouter.Params) {
+	return func(rw http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 		h(rw, r)
 	}
 }
 
 // newHttpRouter returns a http.Handler that adapts the service with the use of the httprouter router.
-func newHttpRouter(log logr.Logger, service shortener.Service) http.Handler {
-	router := httprouter.New()
+func newHttpRouter(log logr.Logger, mappedURL string, a adder.Service, l lookup.Service, d deleter.Service) http.Handler {
+	r := httprouter.New()
 
-	handler := handler.New(log, service, func(r *http.Request, key string) string {
+	s := httpservice.New(log, a, l, d, func(r *http.Request, key string) string {
 		return httprouter.ParamsFromContext(r.Context()).ByName(key)
 	})
 
-	router.GET(fmt.Sprintf("/:%s", urlParameterCode), adapt(handler.Get))
-	router.POST("/", adapt(handler.Post))
+	r.GET(fmt.Sprintf("/:%s", httpservice.UrlParameterCode), adapt(s.RedirectGet(mappedURL)))
+	r.POST("/", adapt(s.RedirectPost(mappedURL)))
+	r.GET(fmt.Sprintf("/:%s/:%s", httpservice.UrlParameterCode, httpservice.UrlParameterToken), adapt(s.RedirectDelete(mappedURL)))
 
-	return router
+	return r
 }

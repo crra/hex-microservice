@@ -9,12 +9,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hex-microservice/adder"
 	"hex-microservice/customcontext"
+	"hex-microservice/deleter"
+	"hex-microservice/lookup"
 	"hex-microservice/meta/value"
+	"hex-microservice/repository"
 	"hex-microservice/repository/memory"
 	"hex-microservice/repository/mongo"
 	"hex-microservice/repository/redis"
-	"hex-microservice/shortener"
 	"log"
 	"net/http"
 	"os"
@@ -37,18 +40,20 @@ var (
 // default server values
 const (
 	defaultBind           = "localhost:8000"
+	defaultMapped         = "http://" + defaultBind
 	defaultRepositoryArgs = ""
 
 	// considder: https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
-	defaultIleTimeout     = 120 * time.Second
-	defaultReadTimeout    = 5 * time.Second
-	defaultWriteTimeout   = 5 * time.Second
-	shutdownGraceDuration = 5 * time.Second
+	defaultServerIdleTimeout    = 120 * time.Second
+	defaultServerReadTimeout    = 5 * time.Second
+	defaultServerWriteTimeout   = 5 * time.Second
+	ServerShutdownGraceDuration = 5 * time.Second
 )
 
 // used configuration keys
 const (
 	configKeyBind       = "bind"
+	configKeyMapped     = "mapped"
 	configKeyRouter     = "router"
 	configKeyRepository = "repository"
 )
@@ -63,52 +68,56 @@ var (
 	defaultRouter = routerChi
 )
 
-// repositoryImpl represents a repository implementaiton that can be instantiated.
+// repositoryImpl represents a repository implementation that can be instantiated.
 type repositoryImpl struct {
 	name string
-	new  func(string) (shortener.Repository, error)
+	new  func(context.Context, string) (repository.RedirectRepository, error)
 }
 
+// String returns the string representation of the routerImpl.
 func (r routerImpl) String() string { return r.name }
 
-// repositoryImpl represents a router implementaiton that can be instantiated.
+// repositoryImpl represents a router implementation that can be instantiated.
 type routerImpl struct {
 	name string
-	new  func(logr.Logger, shortener.Service) http.Handler
+	new  func(logr.Logger, string, adder.Service, lookup.Service, deleter.Service) http.Handler
 }
 
+// String returns the string representation of the repositoryImpl.
 func (r repositoryImpl) String() string { return r.name }
 
 // available router implementations
+// uses symbolic names (e.g. like enums) rather than strings.
 var (
 	routerChi        = routerImpl{"chi", newChiRouter}
 	routerGorillaMux = routerImpl{"gorilla", newGorillaMuxRouter}
 	routerHttpRouter = routerImpl{"httprouter", newHttpRouter}
 
+	// valid implementations
 	routerImplementations = []routerImpl{routerChi, routerGorillaMux, routerHttpRouter}
 )
 
 // available repository implementations
+// uses symbolic names (e.g. like enums) rather than strings.
 var (
 	repoMemory = repositoryImpl{"memory", memory.New}
 	repoRedis  = repositoryImpl{"redis", redis.New}
 	repoMongo  = repositoryImpl{"mongodb", mongo.New}
 
+	// valid implementations
 	repositoryImplementations = []repositoryImpl{repoMemory, repoRedis, repoMongo}
-)
-
-const (
-	urlParameterCode = "code"
 )
 
 // configuration describes the user defined configuration options.
 type configuration struct {
 	Bind           string
+	Mapped         string
 	Router         routerImpl
 	Repository     repositoryImpl
 	RepositoryArgs string
 }
 
+// getConfiguration retrieves the configuration of the service.
 func getConfiguration(log logr.Logger) (*configuration, error) {
 	v := viper.New()
 
@@ -116,52 +125,46 @@ func getConfiguration(log logr.Logger) (*configuration, error) {
 	v.SetConfigType("env")
 	v.AddConfigPath(fmt.Sprintf("$HOME/.%s", name))
 	v.AddConfigPath(".")
+	v.AutomaticEnv()
 
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("fatal error config file: %w", err)
-	}
-
-	// apply defaults
 	v.SetDefault(configKeyBind, defaultBind)
+	v.SetDefault(configKeyMapped, defaultMapped)
 	v.SetDefault(configKeyRepository, defaultRepository.String())
 	v.SetDefault(configKeyRouter, defaultRouter.String())
 
-	input := struct {
-		Bind       string
-		Router     string
-		Repository string
-	}{}
-
-	if err := v.Unmarshal(&input); err != nil {
-		return nil, fmt.Errorf("unable to load config file: %w", err)
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("fatal error reading config file: %w", err)
+		}
 	}
 
 	// check if provided value is supported and fall back to default otherwise
-	router, ok := value.FirstByString(routerImplementations, strings.ToLower, input.Router)
+	router, ok := value.FirstByString(routerImplementations, strings.ToLower, v.GetString(configKeyRouter))
 	if !ok {
 		router = defaultRouter
-		log.Info("default configuruation value due to unsupported value", "key", configKeyRouter, "provided", input.Router, "using", defaultRouter)
+		log.Info("default configuration value due to unsupported value", "key", configKeyRouter, "provided", v.GetString(configKeyRouter), "using", defaultRouter)
 	}
 
 	repositoryType := defaultRouter.String()
 	repositoryArgs := defaultRepositoryArgs
 
 	// split the format by: 'type://params'
-	repositoryParts := strings.Split(input.Repository, repositoryTypeSeparator)
+	repositoryParts := strings.Split(v.GetString(configKeyRepository), repositoryTypeSeparator)
 	if len(repositoryParts) > 0 {
 		repositoryType = repositoryParts[0]
-		repositoryArgs = input.Repository
+		repositoryArgs = v.GetString(configKeyRepository)
 	}
 
 	repository, ok := value.FirstByString(repositoryImplementations, strings.ToLower, repositoryType)
 	if !ok {
 		repository = defaultRepository
 		repositoryArgs = defaultRepositoryArgs
-		log.Info("default configuruation value due to unsupported value", "key", configKeyRepository, "provided", input.Router, "using", defaultRouter)
+		log.Info("default configuration value due to unsupported value", "key", configKeyRepository, "provided", v.GetString(configKeyRepository), "using", repository)
 	}
 
 	return &configuration{
-		Bind:           input.Bind,
+		Bind:           v.GetString(configKeyBind),
+		Mapped:         v.GetString(configKeyMapped),
 		Router:         router,
 		Repository:     repository,
 		RepositoryArgs: repositoryArgs,
@@ -178,25 +181,27 @@ func run(parent context.Context, log logr.Logger) error {
 
 	// initialize the configured repository
 	// use a factory function (new) of the supported type
-	repo, err := c.Repository.new(c.RepositoryArgs)
+	repository, err := c.Repository.new(parent, c.RepositoryArgs)
 	if err != nil {
 		return fmt.Errorf("error creating repository: %w", err)
 	}
 
 	// the service is the domain core
-	service := shortener.NewRedirectService(log, repo)
+	lookupService := lookup.New(log, repository)
+	adderService := adder.New(log, repository)
+	deleteService := deleter.New(log, repository)
 
 	// initialize the configured router
 	// use a factory function (new) of the supported type
-	router := c.Router.new(log, service)
+	router := c.Router.new(log, c.Mapped, adderService, lookupService, deleteService)
 
 	// use the built-in http server
 	server := &http.Server{
 		Addr:         c.Bind,
 		Handler:      router,
-		IdleTimeout:  defaultIleTimeout,
-		ReadTimeout:  defaultReadTimeout,
-		WriteTimeout: defaultWriteTimeout,
+		IdleTimeout:  defaultServerIdleTimeout,
+		ReadTimeout:  defaultServerReadTimeout,
+		WriteTimeout: defaultServerWriteTimeout,
 	}
 
 	// a server context that handles an error during startup
@@ -220,7 +225,7 @@ func run(parent context.Context, log logr.Logger) error {
 	}
 
 	// perform a graceful shutdown but cancel after a timeout
-	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), shutdownGraceDuration)
+	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), ServerShutdownGraceDuration)
 	defer timeoutCancel()
 
 	if err := server.Shutdown(timeoutCtx); err != nil {

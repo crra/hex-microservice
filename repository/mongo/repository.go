@@ -4,10 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hex-microservice/shortener"
+	"hex-microservice/adder"
+	"hex-microservice/deleter"
+	"hex-microservice/lookup"
+	"hex-microservice/meta/value"
+	"hex-microservice/repository"
 	"strings"
 	"time"
 
+	"github.com/jinzhu/copier"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -16,9 +21,7 @@ import (
 )
 
 const (
-	key_code      = shortener.RedirectKeyCode
-	key_url       = shortener.RedirectKeyURL
-	key_createdAt = shortener.RedirectKeyCreatedAt
+	key_code = "code"
 
 	defaultDatabase   = "shortener"
 	defaultCollection = "shortener"
@@ -35,30 +38,34 @@ type connection struct {
 }
 
 type mongoRepository struct {
-	*connection
+	connection
 	client *mongo.Client
+	parent context.Context
 }
 
-func connectionFromURL(URL string) (*connection, error) {
+func connectionFromURL(URL string) (connection, error) {
 	// mongodb://[username:password@]host1[:port1][,...hostN[:portN]][/[defaultauthdb][?options]]
+	var con connection
 
 	c, err := connstring.ParseAndValidate(URL)
 	if err != nil {
-		return nil, err
+		return con, err
 	}
 
-	con := &connection{
-		database:   defaultDatabase,
+	con = connection{
 		collection: defaultCollection,
 		timeout:    defaultTimeout,
-	}
-
-	// database
-	if c.Database != "" {
-		con.database = c.Database
+		database:   value.OrDefault(&c.Database, defaultDatabase),
 	}
 
 	// collection
+	// this is so much shorter and clearer than:
+	//    strings.Join(
+	//      value.GetFromMap(c.UnknownOptions,
+	//		  value.PointerOf(option_collection),
+	//		  value.Ident[string],
+	//		  []string{defaultCollection},
+	//	  ), "")
 	col, ok := c.UnknownOptions[option_collection]
 	if ok {
 		con.collection = strings.Join(col, "")
@@ -70,7 +77,7 @@ func connectionFromURL(URL string) (*connection, error) {
 	if ok {
 		timeoutAsDuration, err := time.ParseDuration(strings.Join(timeout, ""))
 		if err != nil {
-			return nil, fmt.Errorf("repository.NewMongoRepository: can't pase timeout: %w", err)
+			return con, fmt.Errorf("repository.NewMongoRepository: can't pase timeout: %w", err)
 		}
 
 		con.timeout = timeoutAsDuration
@@ -79,10 +86,11 @@ func connectionFromURL(URL string) (*connection, error) {
 	return con, nil
 }
 
-func newClient(URL string, timeout time.Duration) (*mongo.Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+func newClient(parent context.Context, URL string, timeout time.Duration) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
+	// note: connstring.ParseAndValidate is called again during `applyURI`
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(URL))
 	if err != nil {
 		return nil, err
@@ -95,13 +103,13 @@ func newClient(URL string, timeout time.Duration) (*mongo.Client, error) {
 }
 
 // time.Duration(timeout) * time.Second
-func New(url string) (shortener.Repository, error) {
+func New(parent context.Context, url string) (repository.RedirectRepository, error) {
 	con, err := connectionFromURL(url)
 	if err != nil {
 		return nil, err
 	}
 
-	client, err := newClient(url, con.timeout)
+	client, err := newClient(parent, url, con.timeout)
 	if err != nil {
 		return nil, fmt.Errorf("repository.NewMongoRepo: %w", err)
 	}
@@ -109,43 +117,65 @@ func New(url string) (shortener.Repository, error) {
 	return &mongoRepository{
 		connection: con,
 		client:     client,
+		parent:     parent,
 	}, nil
 }
 
-func (r *mongoRepository) Find(code string) (*shortener.Redirect, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+func (r *mongoRepository) LookupFind(code string) (lookup.RedirectStorage, error) {
+	var red lookup.RedirectStorage
+	ctx, cancel := context.WithTimeout(r.parent, r.timeout)
 	defer cancel()
 
-	redirect := &shortener.Redirect{}
+	stored := &redirect{}
 	collection := r.client.Database(r.database).Collection(r.collection)
 	filter := bson.M{key_code: code}
 
-	if err := collection.FindOne(ctx, filter).Decode(&redirect); err != nil {
+	if err := collection.FindOne(ctx, filter).Decode(&stored); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, shortener.ErrRedirectNotFound
+			return red, lookup.ErrNotFound
 		}
 
-		return nil, fmt.Errorf("repository.Redirect.Find: %w", err)
+		return red, fmt.Errorf("repository.Redirect.Find: %w", err)
 	}
 
-	return redirect, nil
+	// From from database domain to application domain
+	// TODO: replace with generated
+	if err := copier.Copy(&red, &stored); err != nil {
+		return red, fmt.Errorf("repository.Redirect.Find copying: %w", err)
+	}
+
+	return red, nil
 }
 
-func (r *mongoRepository) Store(redirect *shortener.Redirect) error {
-	ctx, cancel := context.WithTimeout(context.Background(), r.timeout)
+func (r *mongoRepository) Store(red adder.RedirectStorage) error {
+	ctx, cancel := context.WithTimeout(r.parent, r.timeout)
 	defer cancel()
 
 	collection := r.client.Database(r.database).Collection(r.collection)
-	if _, err := collection.InsertOne(
-		ctx,
-		bson.M{
-			key_code:      redirect.Code,
-			key_url:       redirect.URL,
-			key_createdAt: redirect.CreatedAt,
-		},
-	); err != nil {
+
+	var store redirect
+
+	// From from application domain to database domain
+	// TODO: replace with generated
+	if err := copier.Copy(&store, &red); err != nil {
+		return fmt.Errorf("repository.Redirect.Store copying: %w", err)
+	}
+
+	if _, err := collection.InsertOne(ctx, store); err != nil {
 		return fmt.Errorf("repository.Redirect.Store: %w", err)
 	}
 
+	return nil
+}
+
+//////////////////////////////////////////////////////////////////
+
+func (r *mongoRepository) DeleteFind(code string) (deleter.RedirectStorage, error) {
+	var red deleter.RedirectStorage
+
+	return red, nil
+}
+
+func (r *mongoRepository) Delete(code, token string) error {
 	return nil
 }

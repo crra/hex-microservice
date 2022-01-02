@@ -1,102 +1,128 @@
 package service
 
 import (
-	"errors"
-	"hex-microservice/shortener"
-	"io/ioutil"
-	"log"
+	"encoding/json"
+	"hex-microservice/adder"
+	"hex-microservice/deleter"
+	"hex-microservice/lookup"
 	"net/http"
 
-	js "hex-microservice/serializer/json"
-	ms "hex-microservice/serializer/msgpack"
-
 	"github.com/go-logr/logr"
+	"github.com/vmihailenco/msgpack"
+)
+
+const (
+	UrlParameterCode  = "code"
+	UrlParameterToken = "token"
+
+	contentTypeMessagePack = "application/x-msgpack"
+	contentTypeJson        = "application/json"
+
+	resourceName = "redirect"
+
+	titleEmptyBody             = "Error processing request body, the content is empty"
+	titleProcessingFieldFormat = "Error processing field: '%s'"
+	missingParameterFormat     = "Error missing parameter: '%s'"
 )
 
 type ParamFn func(r *http.Request, key string) string
 
-type RedirectHandler interface {
-	Get(http.ResponseWriter, *http.Request)
-	Post(http.ResponseWriter, *http.Request)
+type Handler interface {
+	RedirectGet(mappingUrl string) http.HandlerFunc
+	RedirectPost(mappingUrl string) http.HandlerFunc
+	RedirectDelete(mappingUrl string) http.HandlerFunc
 }
 
+type converter struct {
+	unmarshal func([]byte, any) error
+	marshal   func(any) ([]byte, error)
+}
+
+// redirectRequest is the redirect that is requested by the client.
+type redirectRequest struct {
+	// mandatory
+	URL string `json:"url" msgpack:"url"  validate:"empty=false & format=url"`
+	// optional
+	CustomCode string `json:"custom_code" msgpack:"custom_code"  validate:"empty=true | gte=5 & lte=25"`
+}
+
+type link struct {
+	Href string `json:"href,omitempty"`
+	Rel  string `json:"rel,omitempty"`
+	T    string `json:"type,omitempty"`
+}
+
+// redirectResponse is the redirect that is returned to the client.
+type redirectResponse struct {
+	Code string `json:"code" msgpack:"code"`
+	URL  string `json:"url" msgpack:"url"`
+
+	Links []link `json:"_links,omitempty"`
+}
+
+// handler is the implementation of the REST service.
 type handler struct {
-	log             logr.Logger
-	paramFn         ParamFn
-	redirectService shortener.Service
+	log     logr.Logger
+	paramFn ParamFn
+
+	// services
+	adder      adder.Service
+	lookup     lookup.Service
+	deleter    deleter.Service
+	converters map[string]converter
 }
 
-func New(log logr.Logger, redirectService shortener.Service, paramFn ParamFn) RedirectHandler {
+type ApiError struct {
+	StatusCode int    `json:"status"`
+	Title      string `json:"title"`
+}
+
+func New(log logr.Logger, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) Handler {
 	return &handler{
-		log:             log,
-		paramFn:         paramFn,
-		redirectService: redirectService,
+		log:     log,
+		paramFn: paramFn,
+		adder:   adder,
+		lookup:  lookup,
+		deleter: deleter,
+		// NOTE: not really sure if this is a good pattern with the lookup table,
+		// but it was taken from the original example.
+		converters: map[string]converter{
+			contentTypeJson:        {json.Unmarshal, json.Marshal},
+			contentTypeMessagePack: {msgpack.Unmarshal, msgpack.Marshal},
+		},
 	}
 }
 
-func writeResponse(w http.ResponseWriter, contentType string, body []byte, statusCode int) {
+// writeResponse is a helper function that write the necessary data to the response.
+func writeResponse(w http.ResponseWriter, contentType string, body []byte, statusCode int) error {
 	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(statusCode)
-	if _, err := w.Write(body); err != nil {
-		log.Println(err)
-	}
+
+	_, err := w.Write(body)
+
+	return err
 }
 
-func (h *handler) serializer(contentType string) shortener.RedirectSerializer {
-	if contentType == "application/x-msgpack" {
-		return &ms.Redirect{}
-	}
-
-	return &js.Redirect{}
-}
-
-func (h *handler) Get(w http.ResponseWriter, r *http.Request) {
-	code := h.paramFn(r, "code")
-	redirect, err := h.redirectService.Find(code)
+// writeApiError is a helper function that writes an ApiError to the response.
+func writeApiError(w http.ResponseWriter, log logr.Logger, apiErr ApiError) {
+	errReturn, err := json.Marshal(apiErr)
 	if err != nil {
-		status := http.StatusInternalServerError
-
-		if errors.Is(err, shortener.ErrRedirectNotFound) {
-			status = http.StatusNotFound
-		}
-
-		http.Error(w, http.StatusText(status), status)
-		return
-	}
-
-	http.Redirect(w, r, redirect.URL, http.StatusMovedPermanently)
-}
-
-func (h *handler) Post(w http.ResponseWriter, r *http.Request) {
-	requestBody, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+		log.Error(err, "error marshalling error")
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	contentType := r.Header.Get("Content-Type")
-	redirect, err := h.serializer(contentType).Decode(requestBody)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+	w.Header().Set("Content-Type", contentTypeJson)
+	http.Error(w, string(errReturn), apiErr.StatusCode)
+	return
+}
+
+// getIP returns the requestor's (could be proxied or direct or faked) ip address (either V4 or V6).
+func getIP(r *http.Request) string {
+	forwarded := r.Header.Get("X-FORWARDED-FOR")
+	if forwarded != "" {
+		return forwarded
 	}
 
-	if err = h.redirectService.Store(redirect); err != nil {
-		status := http.StatusInternalServerError
-
-		if errors.Is(err, shortener.ErrRedirectInvalid) {
-			status = http.StatusBadRequest
-		}
-
-		http.Error(w, http.StatusText(status), status)
-		return
-	}
-
-	responseBody, err := h.serializer(contentType).Encode(redirect)
-	if err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	writeResponse(w, contentType, responseBody, http.StatusCreated)
+	return r.RemoteAddr
 }
