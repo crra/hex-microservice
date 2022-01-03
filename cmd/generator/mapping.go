@@ -146,15 +146,34 @@ func fieldNameFromType(t reflect.Type) ([]string, error) {
 
 // getConverters is the "configuration" for the code generator.
 func getConverters(f afero.Fs) ([]converter, error) {
-	memoryRedirect, err := typesFromFile(f, "repository/memory/redirect.go")
-	if err != nil {
-		return []converter{}, fmt.Errorf("error parsing type file: %w", err)
+	var converters []converter
+
+	type config struct {
+		packageName        string
+		typeFilePath       string
+		fileToGeneratePath string
 	}
 
-	return []converter{
-		{
-			Path:    "repository/memory/converter_gen.go",
-			Package: "memory",
+	configForPackage := func(packageName string) config {
+		return config{
+			packageName:        packageName,
+			typeFilePath:       fmt.Sprintf("repository/%s/redirect.go", packageName),
+			fileToGeneratePath: fmt.Sprintf("repository/%s/converter_gen.go", packageName),
+		}
+	}
+
+	for _, c := range []config{
+		configForPackage("memory"),
+		configForPackage("redis"),
+	} {
+		parseResult, err := typesFromFile(f, c.typeFilePath)
+		if err != nil {
+			return converters, fmt.Errorf("error parsing type file: %w", err)
+		}
+
+		converters = append(converters, converter{
+			Path:    c.fileToGeneratePath,
+			Package: c.packageName,
 			Conversions: []conversion{
 				func(fromTypeName, toTypeName string) conversion {
 					return conversion{
@@ -162,7 +181,7 @@ func getConverters(f afero.Fs) ([]converter, error) {
 						ToTypeName:   toTypeName,
 						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
 						Fields: fields(
-							value.Must(fieldNamesFromParseResults(memoryRedirect, fromTypeName)),
+							value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
 							// TODO: find a way to infer the type from string
 							value.Must(fieldNameFromType(reflect.TypeOf(&lookup.RedirectStorage{}))),
 						),
@@ -176,7 +195,7 @@ func getConverters(f afero.Fs) ([]converter, error) {
 						Fields: fields(
 							// TODO: find a way to infer the type from string
 							value.Must(fieldNameFromType(reflect.TypeOf(&adder.RedirectStorage{}))),
-							value.Must(fieldNamesFromParseResults(memoryRedirect, toTypeName)),
+							value.Must(fieldNamesFromParseResults(parseResult, toTypeName)),
 						),
 					}
 				}("adder.RedirectStorage", "redirect"),
@@ -186,15 +205,17 @@ func getConverters(f afero.Fs) ([]converter, error) {
 						ToTypeName:   toTypeName,
 						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
 						Fields: fields(
-							value.Must(fieldNamesFromParseResults(memoryRedirect, fromTypeName)),
+							value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
 							// TODO: find a way to infer the type from string
 							value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
 						),
 					}
 				}("redirect", "deleter.RedirectStorage"),
 			},
-		},
-	}, nil
+		})
+	}
+
+	return converters, nil
 }
 
 // run encloses the program in a function that can take dependencies (parameters) and can return an error.
@@ -221,8 +242,6 @@ func run(parent context.Context, log logr.Logger, f afero.Fs) error {
 	}
 
 	for _, c := range converters {
-		fmt.Printf("%+v\n", c)
-
 		buf := bytes.NewBuffer([]byte{})
 		err = t.Execute(buf, c)
 
