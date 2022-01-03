@@ -11,7 +11,6 @@ import (
 	"time"
 
 	redis "github.com/go-redis/redis/v8"
-	"github.com/jinzhu/copier"
 )
 
 const redisStructAnnoationTag = "redis"
@@ -94,22 +93,13 @@ func (r *redisRepository) LookupFind(code string) (lookup.RedirectStorage, error
 		return red, fmt.Errorf("repository.Redirect.Find parsing time: %w", err)
 	}
 
-	// From from database domain to application domain
-	// TODO: replace with generated
-	if err := copier.Copy(&red, &stored); err != nil {
-		return red, fmt.Errorf("repository.Redirect.Find copying: %w", err)
-	}
-
-	return red, nil
+	return fromRedirectToLookupRedirectStorage(stored), nil
 }
 
 func (r *redisRepository) Store(red adder.RedirectStorage) error {
 	// From from application domain to database domain
 	// TODO: replace with generated
-	var store redirect
-	if err := copier.Copy(&store, &red); err != nil {
-		return fmt.Errorf("repository.Redirect.Store copying: %w", err)
-	}
+	store := fromAdderRedirectStorageToRedirect(red)
 
 	_, err := r.client.HSet(r.parent, red.Code,
 		store.marshalHash(value.Keys(r.redisMappingsOfRedirect))).Result()

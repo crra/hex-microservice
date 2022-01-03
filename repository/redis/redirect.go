@@ -7,6 +7,7 @@ import (
 
 type redirect struct {
 	Code         string `redis:"code"`
+	Token        string `redis:"token"`
 	URL          string `redis:"url"`
 	CreatedAtStr string `redis:"created_at"`
 	CreatedAt    time.Time
