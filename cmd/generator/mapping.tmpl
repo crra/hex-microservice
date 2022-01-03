@@ -2,7 +2,7 @@ package {{.Package}}
 
 // Hey, this code is generated. You know the drill: DO NOT EDIT
 
-{{ range .Conversions -}}
+{{ range .Data -}}
 func {{.MethodName}}(i {{.FromTypeName}}) ({{.ToTypeName}}) {
   return {{.ToTypeName}}{
     {{- range .Fields}}
