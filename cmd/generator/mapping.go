@@ -196,7 +196,7 @@ func getConverters(f afero.Fs) ([]converter, error) {
 	return converters, nil
 }
 
-func serviceTemplate(c config, parseResult parser.ParseResult) []conversion {
+func serviceTemplate(c config, r parser.ParseResult) []conversion {
 	return []conversion{
 		func(fromTypeName, toTypeName string) conversion {
 			return conversion{
@@ -204,15 +204,15 @@ func serviceTemplate(c config, parseResult parser.ParseResult) []conversion {
 				ToTypeName:   toTypeName,
 				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
 				Fields: fields(
-					value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
-					value.Must(fieldNamesFromParseResults(parseResult, toTypeName)),
+					value.Must(fieldNamesFromParseResults(r, fromTypeName)),
+					value.Must(fieldNamesFromParseResults(r, toTypeName)),
 				),
 			}
 		}("RedirectStorage", "RedirectResult"),
 	}
 }
 
-func repositoryTemplate(c config, parseResult parser.ParseResult) []conversion {
+func repositoryTemplate(c config, r parser.ParseResult) []conversion {
 	return []conversion{
 		func(fromTypeName, toTypeName string) conversion {
 			return conversion{
@@ -220,7 +220,7 @@ func repositoryTemplate(c config, parseResult parser.ParseResult) []conversion {
 				ToTypeName:   toTypeName,
 				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
 				Fields: fields(
-					value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
+					value.Must(fieldNamesFromParseResults(r, fromTypeName)),
 					// TODO: find a way to infer the type from string
 					value.Must(fieldNameFromType(reflect.TypeOf(&lookup.RedirectStorage{}))),
 				),
@@ -234,7 +234,7 @@ func repositoryTemplate(c config, parseResult parser.ParseResult) []conversion {
 				Fields: fields(
 					// TODO: find a way to infer the type from string
 					value.Must(fieldNameFromType(reflect.TypeOf(&adder.RedirectStorage{}))),
-					value.Must(fieldNamesFromParseResults(parseResult, toTypeName)),
+					value.Must(fieldNamesFromParseResults(r, toTypeName)),
 				),
 			}
 		}("adder.RedirectStorage", "redirect"),
@@ -244,7 +244,7 @@ func repositoryTemplate(c config, parseResult parser.ParseResult) []conversion {
 				ToTypeName:   toTypeName,
 				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
 				Fields: fields(
-					value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
+					value.Must(fieldNamesFromParseResults(r, fromTypeName)),
 					// TODO: find a way to infer the type from string
 					value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
 				),
