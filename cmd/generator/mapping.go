@@ -47,7 +47,6 @@ type conversion struct {
 type converter struct {
 	Package     string
 	Path        string
-	Imports     []string
 	TypeSource  string
 	Conversions []conversion
 }
@@ -152,17 +151,10 @@ func getConverters(f afero.Fs) ([]converter, error) {
 		return []converter{}, fmt.Errorf("error parsing type file: %w", err)
 	}
 
-	commomImports := []string{
-		"hex-microservice/adder",
-		"hex-microservice/deleter",
-		"hex-microservice/lookup",
-	}
-
 	return []converter{
 		{
 			Path:    "repository/memory/converter_gen.go",
 			Package: "memory",
-			Imports: commomImports,
 			Conversions: []conversion{
 				func(fromTypeName, toTypeName string) conversion {
 					return conversion{

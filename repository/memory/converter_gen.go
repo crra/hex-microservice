@@ -1,12 +1,12 @@
 package memory
 
-// Hey, this code is generated. You know the drill: DO NOT EDIT
-
 import (
 	"hex-microservice/adder"
 	"hex-microservice/deleter"
 	"hex-microservice/lookup"
 )
+
+// Hey, this code is generated. You know the drill: DO NOT EDIT
 
 func fromRedirectToLookupRedirectStorage(i redirect) lookup.RedirectStorage {
 	return lookup.RedirectStorage{

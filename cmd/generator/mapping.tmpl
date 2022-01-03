@@ -2,12 +2,6 @@ package {{.Package}}
 
 // Hey, this code is generated. You know the drill: DO NOT EDIT
 
-import (
-{{- range .Imports}}
-	"{{.}}"
-{{- end}}
-)
-
 {{ range .Conversions -}}
 func {{.MethodName}}(i {{.FromTypeName}}) ({{.ToTypeName}}) {
   return {{.ToTypeName}}{
