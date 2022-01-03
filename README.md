@@ -10,7 +10,9 @@ Based on the series from https://github.com/tensor-programming/hex-microservice.
 
 # Disclaimer
 
-The implementation in this repository is somehow over-engineered and not to be considered as reference (yet). For example technology/domain boundaries convert data too often.
+The implementation in this repository is somehow over-engineered and not to be considered as reference (yet).
+
+For example technology/domain boundaries convert data too often. The intention behind the multiple conversions are to mimic golang's use of interfaces (Interface Segregation Principle, https://dave.cheney.net/2016/08/20/solid-go-design). So a services consumes are 'storage view' with own entity DTOs rather than using a global domain or storage entity (ORM).
 
 # Todo and Ideas
 

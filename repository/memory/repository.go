@@ -50,15 +50,10 @@ func (r *memoryRepository) LookupFind(code string) (lookup.RedirectStorage, erro
 		return red, err
 	}
 
-	return redirectToLookupRedirectStorage(stored)
+	return fromRedirectToLookupRedirectStorage(stored), nil
 }
 
 func (r *memoryRepository) Store(red adder.RedirectStorage) error {
-	toStore, err := adderRedirectStorageToRedirect(red)
-	if err != nil {
-		return err
-	}
-
 	// Check if already there
 	r.m.RLock()
 	_, ok := r.memory[red.Code]
@@ -68,7 +63,7 @@ func (r *memoryRepository) Store(red adder.RedirectStorage) error {
 	}
 
 	r.m.Lock()
-	r.memory[red.Code] = toStore
+	r.memory[red.Code] = fromAdderRedirectStorageToRedirect(red)
 	r.m.Unlock()
 
 	return nil
@@ -105,5 +100,5 @@ func (r *memoryRepository) DeleteFind(code string) (deleter.RedirectStorage, err
 		return red, err
 	}
 
-	return redirectToDeleterRedirectStorage(stored)
+	return fromRedirectToDeleterRedirectStorage(stored), nil
 }
