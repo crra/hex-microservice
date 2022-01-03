@@ -154,18 +154,25 @@ func getConverters(f afero.Fs) ([]converter, error) {
 		fileToGeneratePath string
 	}
 
-	configForPackage := func(packageName string) config {
+	configForPackage := func(paths ...string) config {
+		pathLen := len(paths)
+		if pathLen < 1 {
+			panic("at least one path is required")
+		}
+
+		packageName := paths[pathLen-1]
+
 		return config{
 			packageName:        packageName,
-			typeFilePath:       fmt.Sprintf("repository/%s/redirect.go", packageName),
-			fileToGeneratePath: fmt.Sprintf("repository/%s/converter_gen.go", packageName),
+			typeFilePath:       path.Join(append(paths, "redirect.go")...),
+			fileToGeneratePath: path.Join(append(paths, "converter_gen.go")...),
 		}
 	}
 
 	for _, c := range []config{
-		configForPackage("memory"),
-		configForPackage("redis"),
-		configForPackage("mongo"),
+		configForPackage("repository", "memory"),
+		configForPackage("repository", "redis"),
+		configForPackage("repository", "mongo"),
 	} {
 		parseResult, err := typesFromFile(f, c.typeFilePath)
 		if err != nil {
