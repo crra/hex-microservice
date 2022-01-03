@@ -144,17 +144,20 @@ func fieldNameFromType(t reflect.Type) ([]string, error) {
 	return fields, nil
 }
 
+type conversionTemplateFn func(config, parser.ParseResult) []conversion
+
+type config struct {
+	packageName        string
+	typeFilePath       string
+	fileToGeneratePath string
+	template           conversionTemplateFn
+}
+
 // getConverters is the "configuration" for the code generator.
 func getConverters(f afero.Fs) ([]converter, error) {
 	var converters []converter
 
-	type config struct {
-		packageName        string
-		typeFilePath       string
-		fileToGeneratePath string
-	}
-
-	configForPackage := func(paths ...string) config {
+	configForPackage := func(f conversionTemplateFn, paths ...string) config {
 		pathLen := len(paths)
 		if pathLen < 1 {
 			panic("at least one path is required")
@@ -163,6 +166,7 @@ func getConverters(f afero.Fs) ([]converter, error) {
 		packageName := paths[pathLen-1]
 
 		return config{
+			template:           f,
 			packageName:        packageName,
 			typeFilePath:       path.Join(append(paths, "redirect.go")...),
 			fileToGeneratePath: path.Join(append(paths, "converter_gen.go")...),
@@ -170,9 +174,12 @@ func getConverters(f afero.Fs) ([]converter, error) {
 	}
 
 	for _, c := range []config{
-		configForPackage("repository", "memory"),
-		configForPackage("repository", "redis"),
-		configForPackage("repository", "mongo"),
+		configForPackage(repositoryTemplate, "repository", "memory"),
+		configForPackage(repositoryTemplate, "repository", "redis"),
+		configForPackage(repositoryTemplate, "repository", "mongo"),
+
+		configForPackage(serviceTemplate, "adder"),
+		configForPackage(serviceTemplate, "lookup"),
 	} {
 		parseResult, err := typesFromFile(f, c.typeFilePath)
 		if err != nil {
@@ -180,50 +187,70 @@ func getConverters(f afero.Fs) ([]converter, error) {
 		}
 
 		converters = append(converters, converter{
-			Path:    c.fileToGeneratePath,
-			Package: c.packageName,
-			Conversions: []conversion{
-				func(fromTypeName, toTypeName string) conversion {
-					return conversion{
-						FromTypeName: fromTypeName,
-						ToTypeName:   toTypeName,
-						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
-						Fields: fields(
-							value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
-							// TODO: find a way to infer the type from string
-							value.Must(fieldNameFromType(reflect.TypeOf(&lookup.RedirectStorage{}))),
-						),
-					}
-				}("redirect", "lookup.RedirectStorage"),
-				func(fromTypeName, toTypeName string) conversion {
-					return conversion{
-						FromTypeName: fromTypeName,
-						ToTypeName:   toTypeName,
-						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
-						Fields: fields(
-							// TODO: find a way to infer the type from string
-							value.Must(fieldNameFromType(reflect.TypeOf(&adder.RedirectStorage{}))),
-							value.Must(fieldNamesFromParseResults(parseResult, toTypeName)),
-						),
-					}
-				}("adder.RedirectStorage", "redirect"),
-				func(fromTypeName, toTypeName string) conversion {
-					return conversion{
-						FromTypeName: fromTypeName,
-						ToTypeName:   toTypeName,
-						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
-						Fields: fields(
-							value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
-							// TODO: find a way to infer the type from string
-							value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
-						),
-					}
-				}("redirect", "deleter.RedirectStorage"),
-			},
+			Path:        c.fileToGeneratePath,
+			Package:     c.packageName,
+			Conversions: c.template(c, parseResult),
 		})
 	}
 
 	return converters, nil
+}
+
+func serviceTemplate(c config, parseResult parser.ParseResult) []conversion {
+	return []conversion{
+		func(fromTypeName, toTypeName string) conversion {
+			return conversion{
+				FromTypeName: fromTypeName,
+				ToTypeName:   toTypeName,
+				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+				Fields: fields(
+					value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
+					value.Must(fieldNamesFromParseResults(parseResult, toTypeName)),
+				),
+			}
+		}("RedirectStorage", "RedirectResult"),
+	}
+}
+
+func repositoryTemplate(c config, parseResult parser.ParseResult) []conversion {
+	return []conversion{
+		func(fromTypeName, toTypeName string) conversion {
+			return conversion{
+				FromTypeName: fromTypeName,
+				ToTypeName:   toTypeName,
+				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+				Fields: fields(
+					value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
+					// TODO: find a way to infer the type from string
+					value.Must(fieldNameFromType(reflect.TypeOf(&lookup.RedirectStorage{}))),
+				),
+			}
+		}("redirect", "lookup.RedirectStorage"),
+		func(fromTypeName, toTypeName string) conversion {
+			return conversion{
+				FromTypeName: fromTypeName,
+				ToTypeName:   toTypeName,
+				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+				Fields: fields(
+					// TODO: find a way to infer the type from string
+					value.Must(fieldNameFromType(reflect.TypeOf(&adder.RedirectStorage{}))),
+					value.Must(fieldNamesFromParseResults(parseResult, toTypeName)),
+				),
+			}
+		}("adder.RedirectStorage", "redirect"),
+		func(fromTypeName, toTypeName string) conversion {
+			return conversion{
+				FromTypeName: fromTypeName,
+				ToTypeName:   toTypeName,
+				MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+				Fields: fields(
+					value.Must(fieldNamesFromParseResults(parseResult, fromTypeName)),
+					// TODO: find a way to infer the type from string
+					value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
+				),
+			}
+		}("redirect", "deleter.RedirectStorage"),
+	}
 }
 
 // run encloses the program in a function that can take dependencies (parameters) and can return an error.

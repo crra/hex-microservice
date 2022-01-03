@@ -74,10 +74,7 @@ func (s *service) Add(redirects ...RedirectCommand) ([]RedirectResult, error) {
 		}
 
 		// result view
-		results[i], err = storageToResult(store)
-		if err != nil {
-			return results, err
-		}
+		results[i] = fromRedirectStorageToRedirectResult(store)
 	}
 
 	return results, nil

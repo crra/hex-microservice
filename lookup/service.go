@@ -46,5 +46,5 @@ func (s *service) Lookup(q RedirectQuery) (RedirectResult, error) {
 		return r, err
 	}
 
-	return storageToResult(stored)
+	return fromRedirectStorageToRedirectResult(stored), nil
 }
