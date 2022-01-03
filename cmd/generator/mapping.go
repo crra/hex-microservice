@@ -89,28 +89,34 @@ func fields(fromFields, toFields []string) []fromTo {
 
 var errTypeNotFound = errors.New("type not found found")
 
-func fieldNamesFromParser(f afero.Fs, file, typeName string) ([]string, error) {
-	var fields []string
-	typeSource, err := f.Open(file)
+func typesFromFile(f afero.Fs, filePath string) (parser.ParseResult, error) {
+	var r parser.ParseResult
+	typeSource, err := f.Open(filePath)
 	if err != nil {
-		return fields, fmt.Errorf("error opening type source: %w", err)
+		return r, fmt.Errorf("error opening type source: %w", err)
 	}
 	defer typeSource.Close()
 
 	typeSourceContent, err := afero.ReadAll(typeSource)
 	if err != nil {
-		return fields, fmt.Errorf("error reading template: %w", err)
+		return r, fmt.Errorf("error reading template: %w", err)
 	}
 
 	p, err := parser.New(string(typeSourceContent))
 	if err != nil {
-		return fields, fmt.Errorf("error creating parser: %w", err)
+		return r, fmt.Errorf("error creating parser: %w", err)
 	}
 
 	res, err := p.Parse()
 	if err != nil {
-		return fields, fmt.Errorf("error parsing type source file: %w", err)
+		return r, fmt.Errorf("error parsing type source file: %w", err)
 	}
+
+	return res, nil
+}
+
+func fieldNamesFromParseResults(res parser.ParseResult, typeName string) ([]string, error) {
+	var fields []string
 
 	for _, t := range res.Structs {
 		if t.Name == typeName {
@@ -139,6 +145,66 @@ func fieldNameFromType(t reflect.Type) ([]string, error) {
 	return fields, nil
 }
 
+// getConverters is the "configuration" for the code generator.
+func getConverters(f afero.Fs) ([]converter, error) {
+	memoryRedirect, err := typesFromFile(f, "repository/memory/redirect.go")
+	if err != nil {
+		return []converter{}, fmt.Errorf("error parsing type file: %w", err)
+	}
+
+	commomImports := []string{
+		"hex-microservice/adder",
+		"hex-microservice/deleter",
+		"hex-microservice/lookup",
+	}
+
+	return []converter{
+		{
+			Path:    "repository/memory/converter_gen.go",
+			Package: "memory",
+			Imports: commomImports,
+			Conversions: []conversion{
+				func(fromTypeName, toTypeName string) conversion {
+					return conversion{
+						FromTypeName: fromTypeName,
+						ToTypeName:   toTypeName,
+						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+						Fields: fields(
+							value.Must(fieldNamesFromParseResults(memoryRedirect, fromTypeName)),
+							// TODO: find a way to infer the type from string
+							value.Must(fieldNameFromType(reflect.TypeOf(&lookup.RedirectStorage{}))),
+						),
+					}
+				}("redirect", "lookup.RedirectStorage"),
+				func(fromTypeName, toTypeName string) conversion {
+					return conversion{
+						FromTypeName: fromTypeName,
+						ToTypeName:   toTypeName,
+						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+						Fields: fields(
+							// TODO: find a way to infer the type from string
+							value.Must(fieldNameFromType(reflect.TypeOf(&adder.RedirectStorage{}))),
+							value.Must(fieldNamesFromParseResults(memoryRedirect, toTypeName)),
+						),
+					}
+				}("adder.RedirectStorage", "redirect"),
+				func(fromTypeName, toTypeName string) conversion {
+					return conversion{
+						FromTypeName: fromTypeName,
+						ToTypeName:   toTypeName,
+						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
+						Fields: fields(
+							value.Must(fieldNamesFromParseResults(memoryRedirect, fromTypeName)),
+							// TODO: find a way to infer the type from string
+							value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
+						),
+					}
+				}("redirect", "deleter.RedirectStorage"),
+			},
+		},
+	}, nil
+}
+
 // run encloses the program in a function that can take dependencies (parameters) and can return an error.
 func run(parent context.Context, log logr.Logger, f afero.Fs) error {
 	templateFile, err := f.Open(path.Join(templatePath, templateFilename))
@@ -157,57 +223,9 @@ func run(parent context.Context, log logr.Logger, f afero.Fs) error {
 		return fmt.Errorf("error parsing template: %w", err)
 	}
 
-	converters := []converter{
-		{
-			Path:    "repository/memory/converter_gen.go",
-			Package: "memory",
-			Imports: []string{
-				"hex-microservice/adder",
-				"hex-microservice/deleter",
-				"hex-microservice/lookup",
-			},
-			Conversions: []conversion{
-				func(fromTypeName, toTypeName string) conversion {
-					return conversion{
-						FromTypeName: fromTypeName,
-						ToTypeName:   toTypeName,
-						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
-						Fields: fields(
-							// TODO: get parse only once
-							value.Must(fieldNamesFromParser(f, "repository/memory/redirect.go", fromTypeName)),
-							// TODO: find a way to infer the type from string
-							value.Must(fieldNameFromType(reflect.TypeOf(&lookup.RedirectStorage{}))),
-						),
-					}
-				}("redirect", "lookup.RedirectStorage"),
-				func(fromTypeName, toTypeName string) conversion {
-					return conversion{
-						FromTypeName: fromTypeName,
-						ToTypeName:   toTypeName,
-						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
-						Fields: fields(
-							// TODO: find a way to infer the type from string
-							value.Must(fieldNameFromType(reflect.TypeOf(&adder.RedirectStorage{}))),
-							// TODO: get parse only once
-							value.Must(fieldNamesFromParser(f, "repository/memory/redirect.go", toTypeName)),
-						),
-					}
-				}("adder.RedirectStorage", "redirect"),
-				func(fromTypeName, toTypeName string) conversion {
-					return conversion{
-						FromTypeName: fromTypeName,
-						ToTypeName:   toTypeName,
-						MethodName:   methodNameFromTypeNames(fromTypeName, toTypeName),
-						Fields: fields(
-							// TODO: get parse only once
-							value.Must(fieldNamesFromParser(f, "repository/memory/redirect.go", fromTypeName)),
-							// TODO: find a way to infer the type from string
-							value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
-						),
-					}
-				}("redirect", "deleter.RedirectStorage"),
-			},
-		},
+	converters, err := getConverters(f)
+	if err != nil {
+		return fmt.Errorf("error generating converters: %w", err)
 	}
 
 	for _, c := range converters {
