@@ -165,6 +165,7 @@ func getConverters(f afero.Fs) ([]converter, error) {
 	for _, c := range []config{
 		configForPackage("memory"),
 		configForPackage("redis"),
+		configForPackage("mongo"),
 	} {
 		parseResult, err := typesFromFile(f, c.typeFilePath)
 		if err != nil {

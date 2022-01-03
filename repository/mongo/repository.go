@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jinzhu/copier"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -138,13 +137,7 @@ func (r *mongoRepository) LookupFind(code string) (lookup.RedirectStorage, error
 		return red, fmt.Errorf("repository.Redirect.Find: %w", err)
 	}
 
-	// From from database domain to application domain
-	// TODO: replace with generated
-	if err := copier.Copy(&red, &stored); err != nil {
-		return red, fmt.Errorf("repository.Redirect.Find copying: %w", err)
-	}
-
-	return red, nil
+	return fromRedirectToLookupRedirectStorage(*stored), nil
 }
 
 func (r *mongoRepository) Store(red adder.RedirectStorage) error {
@@ -153,13 +146,7 @@ func (r *mongoRepository) Store(red adder.RedirectStorage) error {
 
 	collection := r.client.Database(r.database).Collection(r.collection)
 
-	var store redirect
-
-	// From from application domain to database domain
-	// TODO: replace with generated
-	if err := copier.Copy(&store, &red); err != nil {
-		return fmt.Errorf("repository.Redirect.Store copying: %w", err)
-	}
+	store := fromAdderRedirectStorageToRedirect(red)
 
 	if _, err := collection.InsertOne(ctx, store); err != nil {
 		return fmt.Errorf("repository.Redirect.Store: %w", err)
