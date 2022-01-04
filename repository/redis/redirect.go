@@ -13,14 +13,18 @@ type redirect struct {
 	CreatedAt    time.Time
 }
 
-func (r *redirect) marshalHash(keys []string) map[string]any {
+func (r *redirect) marshalHash(mapping map[string]string) map[string]any {
 	r.CreatedAtStr = r.CreatedAt.Format(time.RFC3339)
 
-	var values map[string]any
-	vs := reflect.ValueOf(r).Elem()
+	values := make(map[string]any)
 
-	for _, key := range keys {
-		values[key] = vs.FieldByName(key).Interface()
+	vs := reflect.ValueOf(r)
+	for vs.Kind() == reflect.Ptr {
+		vs = vs.Elem()
+	}
+
+	for targetName, fieldName := range mapping {
+		values[targetName] = vs.FieldByName(fieldName).Interface()
 	}
 
 	return values

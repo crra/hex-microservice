@@ -97,13 +97,15 @@ func (r *redisRepository) LookupFind(code string) (lookup.RedirectStorage, error
 }
 
 func (r *redisRepository) Store(red adder.RedirectStorage) error {
-	// From from application domain to database domain
-	// TODO: replace with generated
-	store := fromAdderRedirectStorageToRedirect(red)
+	toStore := fromAdderRedirectStorageToRedirect(red)
+	toStore.Code = generateKey(toStore.Code)
+	values := toStore.marshalHash(r.redisMappingsOfRedirect)
 
-	_, err := r.client.HSet(r.parent, red.Code,
-		store.marshalHash(value.Keys(r.redisMappingsOfRedirect))).Result()
-	return err
+	if _, err := r.client.HSet(r.parent, toStore.Code, values).Result(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 //////////////////////////////////////////////////////////////////
