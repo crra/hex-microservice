@@ -1,0 +1,145 @@
+version: "3"
+
+vars:
+  FOLDER_DIST: "dist"
+
+  REALM: "hex-microservice"
+
+  APPLICATION_NAME: hex-microservice
+  APPLICATION_MAIN: "./cmd/service"
+
+  # used as version
+  GIT_COMMIT:
+    sh: git describe --tags --always | sed 's/-/+/' | sed 's/^v//'
+
+tasks:
+  clean:
+    desc: Cleans temp files and folders
+    cmds:
+      - rm -rf {{.FOLDER_DIST}}
+
+  build-all:
+    desc: Build the binaries for multiple architectures.
+    deps:
+      - clean
+      - test
+    cmds:
+      # macOS intel
+      - task: build-for
+        vars:
+          {
+            NAME: "{{.APPLICATION_NAME}}",
+            MAIN: "{{.APPLICATION_MAIN}}",
+            GOOS: "darwin",
+            GOARCH: "amd64",
+            EXTENSION: "",
+          }
+      - task: zip
+        vars: { NAME: "darwin_amd64" }
+      # macOS Apple silicon
+      - task: build-for
+        vars:
+          {
+            NAME: "{{.APPLICATION_NAME}}",
+            MAIN: "{{.APPLICATION_MAIN}}",
+            GOOS: "darwin",
+            GOARCH: "arm64",
+            EXTENSION: "",
+          }
+      - task: zip
+        vars: { NAME: "darwin_arm64" }
+      - '{{if eq OS "darwin"}}
+        mkdir -p {{.FOLDER_DIST}}/darwin_universal &&
+        lipo -create -output {{.FOLDER_DIST}}/darwin_universal/{{.APPLICATION_NAME}} {{.FOLDER_DIST}}/darwin_amd64/{{.APPLICATION_NAME}} {{.FOLDER_DIST}}/darwin_arm64/{{.APPLICATION_NAME}} &&
+        cd {{.FOLDER_DIST}}/darwin_universal/ && zip -r "../darwin_universal.zip" .
+        {{end}}'
+      # linux 64
+      - task: build-for
+        vars:
+          {
+            NAME: "{{.APPLICATION_NAME}}",
+            MAIN: "{{.APPLICATION_MAIN}}",
+            GOOS: "linux",
+            GOARCH: "amd64",
+            EXTENSION: "",
+          }
+      - task: zip
+        vars: { NAME: "linux_amd64" }
+      # windows 64
+      - task: build-for
+        vars:
+          {
+            NAME: "{{.APPLICATION_NAME}}",
+            MAIN: "{{.APPLICATION_MAIN}}",
+            GOOS: "windows",
+            GOARCH: "amd64",
+            EXTENSION: ".exe",
+          }
+      - task: zip
+        vars: { NAME: "windows_amd64" }
+  test:
+    desc: Perform all tests
+    cmds:
+      - go test -cover -race ./...
+
+  build:
+    desc: Build the binary for the current architecture.
+    deps:
+      - clean
+      - test
+    cmds:
+      - task: build-for
+        vars:
+          {
+            NAME: "{{.APPLICATION_NAME}}",
+            MAIN: "{{.APPLICATION_MAIN}}",
+            GOOS: "{{OS}}",
+            GOARCH: "{{ARCH}}",
+            EXTENSION: "{{exeExt}}",
+          }
+      - task: zip
+        vars: { NAME: "{{OS}}_{{ARCH}}" }
+
+  zip:
+    vars:
+      FOLDER: "{{.FOLDER_DIST}}/{{.NAME}}"
+    summary: Zips the folder
+    cmds:
+      - cd "${FOLDER}" && zip -r "../${NAME}.zip" .
+    generates:
+      - "{{.FOLDER_DIST}}/{{.NAME}}.zip"
+    env:
+      NAME: "{{.NAME}}"
+      FOLDER: "{{.FOLDER}}"
+
+  build-for:
+    vars:
+      FOLDER: "{{.FOLDER_DIST}}/{{.GOOS}}_{{.GOARCH}}"
+      OUTPUT: "{{.FOLDER_DIST}}/{{.GOOS}}_{{.GOARCH}}/{{.NAME}}{{.EXTENSION}}"
+
+    summary: Build the binary for a given platform
+    cmds:
+      - mkdir -p "{{.FOLDER}}"
+      - >-
+        go build -trimpath
+        -ldflags="-w -s
+        -X main.name="{{.NAME}}{{.EXTENSION}}"
+        -X main.version="{{.GIT_COMMIT}}"
+        -X main.realm="{{.REALM}}"
+        -extldflags '-static'" -a
+        -buildvcs=false 
+        -buildinfo=false 
+        -o {{.OUTPUT}}
+        {{.MAIN}}
+
+    generates:
+      - "{{.OUTPUT}}"
+    env:
+      NAME: "{{.NAME}}"
+      MAIN: "{{.MAIN}}"
+      GOOS: "{{.GOOS}}"
+      GOARCH: "{{.GOARCH}}"
+      GOARM: "{{.GOARM}}"
+      EXTENSION: "{{.EXTENSION}}"
+      GIT_COMMIT: "{{.GIT_COMMIT}}"
+      REALM: "{{.REALM}}"
