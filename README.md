@@ -111,7 +111,7 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 
 # Building behind a corporate proxy
 
-If the docker image is build behind a corporate proxy, one can either use the global instance or a local proxy running on localhost (e.g. CNTLM). Either way, the proxy can be configured with an `.env` file in the root directory containing the key `PROXY=`. The task process `task docker` will set the proxy variables based on this `PROXY` variable.
+If the docker image is build behind a corporate proxy, one can either use the global instance or a local proxy running on localhost (e.g. CNTLM). Either way, the proxy can be configured with the environment variable `CONTAINER_HTTP_PROXY` and `CONTAINER_HTTPS_PROXY`. The task process `task docker` will set the proxy variables based on this variables.
 
 If the setup is by coincidence Windows 10 with WSL2 and docker installed inside a WSL distro (not the docker desktop client), placing the following code in the `.bashrc`:
 
@@ -124,7 +124,7 @@ export CONTAINER_HTTP_PROXY="http://${IP}:${CONTAINER_HTTP_PROXY_PORT}"
 export CONTAINER_HTTPS_PROXY="http://${IP}:${CONTAINER_HTTP_PROXY_PORT}"
 ```
 
-This snippet provides the environment variables `$CONTAINER_HTTP_PROXY` and `$CONTAINER_HTTPS_PROXY` for the interactive shell with the current IP address of the WSL2 host. It seams like that the IP addresses are not fixed and change from startup to startup. This makes calling `task docker` transparent if a proxy is used or not.
+This snippet provides the environment variables `CONTAINER_HTTP_PROXY` and `CONTAINER_HTTPS_PROXY` for the interactive shell with the current IP address of the WSL2 host. It seams like that the IP addresses are not fixed and change from startup to startup. This makes calling `task docker` transparent if a proxy is used or not.
 
 If the corporate proxy is an intercepting man-in-the-middle (MITM) proxy, the secure connection can't be verified during downloading the dependencies. Instead of ignoring security completely, the certificate of the MITM-proxy must be added to the docker container. Conveniently placing the `*.crt` certificate files in the `certificates` folder will automatically used during build. These certificates will not be available in the final docker image.
 
