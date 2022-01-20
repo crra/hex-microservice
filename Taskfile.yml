@@ -7,6 +7,7 @@ vars:
 
   APPLICATION_NAME: hex-microservice
   APPLICATION_MAIN: "./cmd/service"
+  APPLICATION_TAG: "crra/hex-microservice"
 
   # used as version
   GIT_COMMIT:
@@ -143,3 +144,40 @@ tasks:
       EXTENSION: "{{.EXTENSION}}"
       GIT_COMMIT: "{{.GIT_COMMIT}}"
       REALM: "{{.REALM}}"
+
+  docker:
+    desc: Dockerise the application
+    cmds:
+      - task: docker-each
+        vars:
+          {
+            NAME: "{{.APPLICATION_NAME}}",
+            MAIN: "{{.APPLICATION_MAIN}}",
+            TAG: "{{.APPLICATION_TAG}}",
+          }
+
+  docker-each:
+    cmds:
+      - docker image rm --force "{{.TAG}}"
+      - >-
+        docker build
+        --squash
+        --build-arg VERSION="{{.GIT_COMMIT}}"
+        --build-arg NAME="{{.NAME}}"
+        --build-arg MAIN="{{.MAIN}}"
+        --build-arg REALM="{{.REALM}}"
+        --build-arg http_proxy="{{.CONTAINER_HTTP_PROXY}}"
+        --build-arg HTTP_PROXY="{{.CONTAINER_HTTP_PROXY}}"
+        --build-arg https_proxy="{{.CONTAINER_HTTPS_PROXY}}"
+        --build-arg HTTPS_PROXY="{{.CONTAINER_HTTPS_PROXY}}"
+        --tag "{{.TAG}}"
+        --file Dockerfile
+        .
+
+    env:
+      DOCKER_BUILDKIT: 1
+      TAG: "{{.NAME}}"
+      NAME: "{{.NAME}}"
+      MAIN: "{{.MAIN}}"
+      REALM: "{{.REALM}}"
+      PROXY: "{{.PROXY}}"
