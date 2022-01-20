@@ -111,7 +111,7 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 
 # Building behind a corporate proxy
 
-If the docker image is build behind a corporate proxy, one can either use the global instance or a local proxy running on localhost (e.g. CNTLM). Either way, the proxy can be configured with the environment variable `CONTAINER_HTTP_PROXY` and `CONTAINER_HTTPS_PROXY`. The task process `task docker` will set the proxy variables based on this variables.
+If the docker image is build behind a corporate proxy, one can either use the global instance or a local proxy running on localhost (e.g. CNTLM). Either way, the proxy can be configured with the environment variable `CONTAINER_HTTP_PROXY` and `CONTAINER_HTTPS_PROXY`. The [Task](https://taskfile.dev) process `task docker` will set the proxy variables based on this variables.
 
 If the setup is by coincidence Windows 10 with WSL2 and docker installed inside a WSL distro (not the docker desktop client), placing the following code in the `.bashrc`:
 
@@ -130,6 +130,6 @@ If the corporate proxy is an intercepting man-in-the-middle (MITM) proxy, the se
 
 # Running the docker file locally
 
-NOTE: The `--env "BIND=:8000"` is required due to the default bind value which binds to localhost only.
-
 `docker run --rm -it -p 8000:8000 --env "BIND=:8000" crra/hex-microservice`
+
+NOTE: The `--env "BIND=:8000"` is required due to the default bind value which binds to localhost only.
