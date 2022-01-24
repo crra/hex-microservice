@@ -129,7 +129,6 @@ tasks:
         -X main.realm="{{.REALM}}"
         -extldflags '-static'" -a
         -buildvcs=false 
-        -buildinfo=false 
         -o {{.OUTPUT}}
         {{.MAIN}}
 
