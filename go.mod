@@ -17,7 +17,7 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/teris-io/shortid v0.0.0-20201117134242-e59966efd125
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
-	go.mongodb.org/mongo-driver v1.8.2
+	go.mongodb.org/mongo-driver v1.8.3
 	golang.org/x/tools v0.1.9
 	gopkg.in/dealancer/validate.v2 v2.1.0
 )
