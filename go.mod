@@ -12,7 +12,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/jinzhu/copier v0.3.5
 	github.com/julienschmidt/httprouter v1.3.0
-	github.com/spf13/afero v1.8.0
+	github.com/spf13/afero v1.8.1
 	github.com/spf13/viper v1.10.1
 	github.com/stretchr/testify v1.7.0
 	github.com/teris-io/shortid v0.0.0-20201117134242-e59966efd125
