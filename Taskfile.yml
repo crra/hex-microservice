@@ -1,6 +1,6 @@
 version: "3"
 
-dotenv: [".env"]
+dotenv: ["taskfile.env"]
 
 vars:
   FOLDER_DIST: "dist"
