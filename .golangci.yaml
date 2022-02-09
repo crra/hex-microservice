@@ -27,22 +27,32 @@ linters:
   enable:
     - asciicheck
     - bodyclose
+    - cyclop
     - deadcode
+    - decorder
+    - depguard
     - depguard
     - dogsled
     - dupl
+    - dupl
     - errcheck
+    - errname
+    - errorlint
     - exhaustive
     - funlen
+    - go-critic
+    - gochecknoglobals
     - gochecknoinits
+    - gocognit
+    - gocognit
+    - goconst
     - goconst
     - gocritic
-    - gocognit
     - gocyclo
     - godot
     - godox
+    - godox
     - goerr113
-    - errorlint
     - gofumpt
     - goimports
     - golint
@@ -51,15 +61,19 @@ linters:
     - gosec
     - gosimple
     - govet
-    - ineffassign
     - ifshort
+    - ifshort
+    - importas
+    - ineffassign
+    - ireturn
     - lll
+    - maintidx
     - megacheck
     - misspell
     - nakedret
+    - nestif
     - noctx
     - nolintlint
-    - nestif
     - rowserrcheck
     - scopelint
     - staticcheck
