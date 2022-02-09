@@ -1,9 +1,10 @@
-package service
+package rest
 
 import (
 	"encoding/json"
 	"hex-microservice/adder"
 	"hex-microservice/deleter"
+	"hex-microservice/health"
 	"hex-microservice/lookup"
 	"net/http"
 
@@ -28,6 +29,7 @@ const (
 type ParamFn func(r *http.Request, key string) string
 
 type Handler interface {
+	Health() http.HandlerFunc
 	RedirectGet(mappingUrl string) http.HandlerFunc
 	RedirectPost(mappingUrl string) http.HandlerFunc
 	RedirectDelete(mappingUrl string) http.HandlerFunc
@@ -69,6 +71,7 @@ type handler struct {
 	adder      adder.Service
 	lookup     lookup.Service
 	deleter    deleter.Service
+	health     health.Service
 	converters map[string]converter
 }
 
@@ -77,10 +80,11 @@ type ApiError struct {
 	Title      string `json:"title"`
 }
 
-func New(log logr.Logger, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) Handler {
+func New(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) Handler {
 	return &handler{
 		log:     log,
 		paramFn: paramFn,
+		health:  health,
 		adder:   adder,
 		lookup:  lookup,
 		deleter: deleter,
