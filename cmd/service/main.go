@@ -23,7 +23,6 @@ import (
 	"hex-microservice/repository/memory"
 	"hex-microservice/repository/mongo"
 	"hex-microservice/repository/redis"
-	"hex-microservice/repository/sqlite"
 	"log"
 	"net/http"
 	"os"
@@ -105,7 +104,7 @@ var repositoryImplementations = []repositoryImpl{
 	{"memory", memory.New},
 	{"redis", redis.New},
 	{"mongodb", mongo.New},
-	{"sqlite", sqlite.New},
+	//"sqlite", sqlite.New},
 }
 
 // configuration describes the user defined configuration options.
