@@ -8,7 +8,7 @@ import (
 	"hex-microservice/http/rest"
 	"hex-microservice/lookup"
 	"net/http"
-	"regexp"
+	"strings"
 
 	"github.com/go-logr/logr"
 )
@@ -22,7 +22,6 @@ type router struct{}
 type goRouter func(http.ResponseWriter, *http.Request)
 
 func (f goRouter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	// delegate to the anonymous function
 	f(rw, r)
 }
 
@@ -38,20 +37,19 @@ const (
 
 const varsKey = "UrlParameter"
 
-func match(r *http.Request, pattern *regexp.Regexp, vars ...string) *http.Request {
-	matches := pattern.FindStringSubmatch(r.URL.Path)
+func match(r *http.Request, path string, vars ...string) *http.Request {
+	matches := strings.Split(path, "/")
 	lenMatches := len(matches)
-	if lenMatches <= 0 {
+	lenVars := len(vars)
+
+	if lenMatches <= 0 || lenMatches != lenVars {
 		return nil
 	}
 
 	parts := make(map[string]string, lenMatches)
 
-	for i, v := range vars {
-		if i > lenMatches {
-			break
-		}
-		parts[v] = matches[i]
+	for i, m := range matches {
+		parts[vars[i]] = m
 	}
 
 	ctx := context.WithValue(r.Context(), varsKey, parts)
@@ -59,22 +57,35 @@ func match(r *http.Request, pattern *regexp.Regexp, vars ...string) *http.Reques
 	return r.WithContext(ctx)
 }
 
+func paramFunc(r *http.Request, key string) string {
+	if rv := r.Context().Value(varsKey); rv != nil {
+		if kv, ok := rv.(map[string]string); ok {
+			return kv[key]
+		}
+	}
+
+	return ""
+}
+
+func withoutTrailing(path string) string {
+	if path != "/" {
+		path = strings.TrimRight(path, "/")
+	}
+
+	return path
+}
+
+func withoutPrefix(path, prefix string) string {
+	return strings.TrimLeft(path, prefix)
+}
+
 // newGoRouter
 func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l lookup.Service, d deleter.Service) http.Handler {
-	reCode := regexp.MustCompile(`^/([^/]+)$`)
-
-	s := rest.New(log, h, a, l, d, func(r *http.Request, key string) string {
-		if rv := r.Context().Value(varsKey); rv != nil {
-			if kv, ok := rv.(map[string]string); ok {
-				return kv[key]
-			}
-		}
-
-		return ""
-	})
+	s := rest.New(log, h, a, l, d, paramFunc)
 
 	return goRouter(func(rw http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
+		path := withoutTrailing(r.URL.Path)
+
 		log.Info("router", "method", r.Method, "path", path)
 
 		switch path {
@@ -85,7 +96,8 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 			}
 		}
 
-		if r := match(r, reCode, rest.UrlParameterCode); r != nil {
+		const prefix = "/"
+		if r := match(r, withoutPrefix(path, prefix), rest.UrlParameterCode); r != nil {
 			switch r.Method {
 			case "GET":
 				s.RedirectGet(mappedURL)(rw, r)

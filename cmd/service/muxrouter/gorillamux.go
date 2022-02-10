@@ -1,6 +1,7 @@
 package muxrouter
 
 import (
+	"fmt"
 	"hex-microservice/adder"
 	"hex-microservice/deleter"
 	"hex-microservice/health"
@@ -27,12 +28,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 
 	r.HandleFunc("/health", s.Health()).Methods("GET")
 
-	r.HandleFunc("/", s.RedirectGet(mappedURL)).Methods("GET")
-	/*
-			r.HandleFunc("/products", ProductsHandler).
-
-		  Methods("GET").
-	*/
+	r.HandleFunc(fmt.Sprintf("/{%s}", rest.UrlParameterCode), s.RedirectGet(mappedURL)).Methods("GET")
 
 	return r
 }

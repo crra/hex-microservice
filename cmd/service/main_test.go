@@ -69,7 +69,7 @@ func TestRedirectGetRoot(t *testing.T) {
 				responseRecorder := httptest.NewRecorder()
 				router.ServeHTTP(responseRecorder, request)
 
-				assert.Equal(t, http.StatusNotFound, responseRecorder.Result().StatusCode)
+				assert.Equal(t, http.StatusMethodNotAllowed, responseRecorder.Result().StatusCode)
 			})
 		}
 
@@ -107,7 +107,9 @@ func TestRedirectGetExisting(t *testing.T) {
 					responseRecorder := httptest.NewRecorder()
 					router.ServeHTTP(responseRecorder, request)
 
-					assert.Equal(t, http.StatusTemporaryRedirect, responseRecorder.Result().StatusCode)
+					if assert.Equal(t, http.StatusTemporaryRedirect, responseRecorder.Result().StatusCode) {
+						assert.Equal(t, url, responseRecorder.Result().Header.Get("location"))
+					}
 				})
 			}
 		}
