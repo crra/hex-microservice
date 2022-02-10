@@ -6,26 +6,31 @@ Tries to give an answer if in an example code one can find: "error handling omit
 
 The service represents a very simple URL shortener service. Offers basic CRD (create, read, delete) operations via REST.
 
-Based on the series from [tensor-programming](https://github.com/tensor-programming/hex-microservice.git) and recommendations from [Kat Zień](https://github.com/katzien/go-structure-examples).
+Based on the series from [tensor-programming](https://github.com/tensor-programming/hex-microservice.git) and recommendations from:
+
+- [How do you structure your Go apps? - Kat Zień](https://github.com/katzien/go-structure-examples)
+- [Improving the code from the official Go RESTful API tutorial - Ben Hoyt](https://benhoyt.com/writings/web-service-stdlib/)
 
 # Disclaimer
 
 The implementation in this repository ~~could be a little~~ _is_ over-engineered for such a simple project. It exists mostly for its educational purpose and as an experiment to break with traditional approaches (e.g. the active record pattern, ORM, storing JSON in redis, coupling of the domain and the entities).
 
-# Golang 1.18
+## Golang 1.18
 
-As of today (January, 2022), golang 1.18 with generics is not yet released. `gotip` installs the latest go build (which includes 1.18):
+As of today (January, 2022), golang 1.18 with generics is not yet released, but betas are available. Please refer to: https://go.dev/blog/go1.18beta2
 
-[Source](https://gist.github.com/nikgalushko/e1b5c85c64653dd554a7a904bbef4eee):
-
-## Install gotip
+### Install gotip
 
 ```
-go install golang.org/dl/gotip@latest
-gotip download
+go install golang.org/dl/go1.18beta2@latest
+go1.18beta2 download
 ```
 
-## Install latest gopls
+### Install latest gopls
+
+1. Either in Codium / VS Studio Code: "Go: Install/Update Tools"
+
+2. Or manually. Example for POSIX based systems:
 
 ```
 mkdir /tmp/gopls && cd "$_"
@@ -34,11 +39,11 @@ gotip get golang.org/x/tools/gopls@master golang.org/x/tools@master
 gotip install golang.org/x/tools/gopls
 ```
 
-## Configure VSCode
+### Configure VSCode/Codium
 
 1. View > Command Palette
 2. Go: choose Go environment
-3. select gotip
+3. select go1.18beta2
 
 # Structure of the project
 
@@ -98,7 +103,7 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 # Todo and Ideas
 
 - implement and test mongo backend
-- implement and test other routers than `chi`
+- ~~implement and test other routers than `chi`~~
 - implement the code generator that creates the conversion code that performs the conversion without runtime inspection (reflection)
 - compare this custom golang lib version (this) with an existing framework like spring boot (e.g. input validation)
 - handle key collisions

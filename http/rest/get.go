@@ -1,4 +1,4 @@
-package service
+package rest
 
 import (
 	"errors"
@@ -23,7 +23,7 @@ func (h *handler) RedirectGet(mappingUrl string) http.HandlerFunc {
 			return
 		}
 
-		http.Redirect(w, r, redirect.URL, http.StatusMovedPermanently)
+		http.Redirect(w, r, redirect.URL, http.StatusTemporaryRedirect)
 		return
 	}
 }

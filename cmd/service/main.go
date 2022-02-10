@@ -10,8 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"hex-microservice/adder"
+	"hex-microservice/cmd/service/chirouter"
+	"hex-microservice/cmd/service/gorouter"
+	"hex-microservice/cmd/service/httprouter"
+	"hex-microservice/cmd/service/muxrouter"
 	"hex-microservice/customcontext"
 	"hex-microservice/deleter"
+	"hex-microservice/health"
 	"hex-microservice/lookup"
 	"hex-microservice/meta/value"
 	"hex-microservice/repository"
@@ -63,9 +68,9 @@ const repositoryTypeSeparator = ":"
 
 var (
 	// used default repository implementation
-	defaultRepository = repoMemory
+	defaultRepository = repositoryImplementations[0]
 	// used default router implementation
-	defaultRouter = routerChi
+	defaultRouter = routerImplementations[0]
 )
 
 // repositoryImpl represents a repository implementation that can be instantiated.
@@ -80,33 +85,27 @@ func (r routerImpl) String() string { return r.name }
 // repositoryImpl represents a router implementation that can be instantiated.
 type routerImpl struct {
 	name string
-	new  func(logr.Logger, string, adder.Service, lookup.Service, deleter.Service) http.Handler
+	new  func(logr.Logger, string, health.Service, adder.Service, lookup.Service, deleter.Service) http.Handler
 }
 
 // String returns the string representation of the repositoryImpl.
 func (r repositoryImpl) String() string { return r.name }
 
 // available router implementations
-// uses symbolic names (e.g. like enums) rather than strings.
-var (
-	routerChi        = routerImpl{"chi", newChiRouter}
-	routerGorillaMux = routerImpl{"gorilla", newGorillaMuxRouter}
-	routerHttpRouter = routerImpl{"httprouter", newHttpRouter}
-
-	// valid implementations
-	routerImplementations = []routerImpl{routerChi, routerGorillaMux, routerHttpRouter}
-)
+var routerImplementations = []routerImpl{
+	{"go", gorouter.New},
+	{"chi", chirouter.New},
+	{"gorilla", muxrouter.New},
+	{"httprouter", httprouter.New},
+}
 
 // available repository implementations
-// uses symbolic names (e.g. like enums) rather than strings.
-var (
-	repoMemory = repositoryImpl{"memory", memory.New}
-	repoRedis  = repositoryImpl{"redis", redis.New}
-	repoMongo  = repositoryImpl{"mongodb", mongo.New}
-
-	// valid implementations
-	repositoryImplementations = []repositoryImpl{repoMemory, repoRedis, repoMongo}
-)
+var repositoryImplementations = []repositoryImpl{
+	{"memory", memory.New},
+	{"redis", redis.New},
+	{"mongodb", mongo.New},
+	//"sqlite", sqlite.New},
+}
 
 // configuration describes the user defined configuration options.
 type configuration struct {
@@ -190,10 +189,11 @@ func run(parent context.Context, log logr.Logger) error {
 	lookupService := lookup.New(log, repository)
 	adderService := adder.New(log, repository)
 	deleteService := deleter.New(log, repository)
+	healthService := health.New(name, version)
 
 	// initialize the configured router
 	// use a factory function (new) of the supported type
-	router := c.Router.new(log, c.Mapped, adderService, lookupService, deleteService)
+	router := c.Router.new(log, c.Mapped, healthService, adderService, lookupService, deleteService)
 
 	// use the built-in http server
 	server := &http.Server{

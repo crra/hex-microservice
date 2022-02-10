@@ -1,5 +1,7 @@
 version: "3"
 
+dotenv: ["taskfile.env"]
+
 vars:
   FOLDER_DIST: "dist"
 
@@ -81,7 +83,7 @@ tasks:
   test:
     desc: Perform all tests
     cmds:
-      - go test -cover -race ./...
+      - ${GO} test -cover -race ./...
 
   build:
     desc: Build the binary for the current architecture.
@@ -122,14 +124,13 @@ tasks:
     cmds:
       - mkdir -p "{{.FOLDER}}"
       - >-
-        go build -trimpath
+        CGO_ENABLED=1 ${GO} build -trimpath
         -ldflags="-w -s
         -X main.name="{{.NAME}}{{.EXTENSION}}"
         -X main.version="{{.GIT_COMMIT}}"
         -X main.realm="{{.REALM}}"
         -extldflags '-static'" -a
         -buildvcs=false 
-        -buildinfo=false 
         -o {{.OUTPUT}}
         {{.MAIN}}
 
