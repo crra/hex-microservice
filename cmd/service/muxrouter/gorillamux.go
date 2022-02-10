@@ -15,7 +15,11 @@ import (
 )
 
 func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l lookup.Service, d deleter.Service) http.Handler {
-	r := mux.NewRouter().StrictSlash(true)
+	r := mux.NewRouter()
+	r.StrictSlash(true)
+	r.NotFoundHandler = http.NotFoundHandler()
+	r.MethodNotAllowedHandler = http.NotFoundHandler()
+
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -29,6 +33,8 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 	r.HandleFunc("/health", s.Health()).Methods("GET")
 
 	r.HandleFunc(fmt.Sprintf("/{%s}", rest.UrlParameterCode), s.RedirectGet(mappedURL)).Methods("GET")
+	r.HandleFunc("/", s.RedirectPost(mappedURL)).Methods("POST")
+	r.HandleFunc(fmt.Sprintf("/{%s}/{%s}", rest.UrlParameterCode, rest.UrlParameterToken), s.RedirectDelete(mappedURL)).Methods("DELETE")
 
 	return r
 }

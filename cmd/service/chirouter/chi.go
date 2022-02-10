@@ -23,6 +23,9 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.StripSlashes)
 
+	r.NotFound(http.NotFound)
+	r.MethodNotAllowed(http.NotFound)
+
 	s := rest.New(log, h, a, l, d, chi.URLParam)
 
 	r.Get("/health", s.Health())
