@@ -103,7 +103,7 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 # Todo and Ideas
 
 - implement and test mongo backend
-- implement and test other routers than `chi`
+- ~~implement and test other routers than `chi`~~
 - implement the code generator that creates the conversion code that performs the conversion without runtime inspection (reflection)
 - compare this custom golang lib version (this) with an existing framework like spring boot (e.g. input validation)
 - handle key collisions
