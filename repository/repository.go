@@ -17,3 +17,5 @@ type RedirectRepository interface {
 	// Delete deletes a stored redirect.
 	Delete(code, token string) error
 }
+
+type Close func() error

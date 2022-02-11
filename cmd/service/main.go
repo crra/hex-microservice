@@ -23,6 +23,7 @@ import (
 	"hex-microservice/repository/memory"
 	"hex-microservice/repository/mongo"
 	"hex-microservice/repository/redis"
+	"hex-microservice/repository/sqlite"
 	"log"
 	"net/http"
 	"os"
@@ -76,7 +77,7 @@ var (
 // repositoryImpl represents a repository implementation that can be instantiated.
 type repositoryImpl struct {
 	name string
-	new  func(context.Context, string) (repository.RedirectRepository, error)
+	new  func(context.Context, string) (repository.RedirectRepository, repository.Close, error)
 }
 
 // String returns the string representation of the routerImpl.
@@ -104,7 +105,7 @@ var repositoryImplementations = []repositoryImpl{
 	{"memory", memory.New},
 	{"redis", redis.New},
 	{"mongodb", mongo.New},
-	//"sqlite", sqlite.New},
+	{"sqlite", sqlite.New},
 }
 
 // configuration describes the user defined configuration options.
@@ -180,10 +181,12 @@ func run(parent context.Context, log logr.Logger) error {
 
 	// initialize the configured repository
 	// use a factory function (new) of the supported type
-	repository, err := c.Repository.new(parent, c.RepositoryArgs)
+	repository, close, err := c.Repository.new(parent, c.RepositoryArgs)
 	if err != nil {
 		return fmt.Errorf("error creating repository: %w", err)
 	}
+
+	defer close()
 
 	// the service is the domain core
 	lookupService := lookup.New(log, repository)

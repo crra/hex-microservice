@@ -102,22 +102,24 @@ func newClient(parent context.Context, URL string, timeout time.Duration) (*mong
 }
 
 // time.Duration(timeout) * time.Second
-func New(parent context.Context, url string) (repository.RedirectRepository, error) {
+func New(parent context.Context, url string) (repository.RedirectRepository, repository.Close, error) {
 	con, err := connectionFromURL(url)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	client, err := newClient(parent, url, con.timeout)
 	if err != nil {
-		return nil, fmt.Errorf("repository.NewMongoRepo: %w", err)
+		return nil, nil, fmt.Errorf("repository.NewMongoRepo: %w", err)
 	}
 
 	return &mongoRepository{
-		connection: con,
-		client:     client,
-		parent:     parent,
-	}, nil
+			connection: con,
+			client:     client,
+			parent:     parent,
+		}, func() error {
+			return client.Disconnect(parent)
+		}, nil
 }
 
 func (r *mongoRepository) LookupFind(code string) (lookup.RedirectStorage, error) {

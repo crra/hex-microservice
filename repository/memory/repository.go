@@ -18,11 +18,11 @@ type memoryRepository struct {
 	m      sync.RWMutex
 }
 
-func New(_ context.Context, _ string) (repository.RedirectRepository, error) {
+func New(_ context.Context, _ string) (repository.RedirectRepository, repository.Close, error) {
 	return &memoryRepository{
 		memory: make(map[string]redirect),
 		m:      sync.RWMutex{},
-	}, nil
+	}, func() error { return nil }, nil
 }
 
 // findByCode resolves a redirect by it's code.

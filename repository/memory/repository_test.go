@@ -22,40 +22,40 @@ func new() *memoryRepository {
 }
 
 func TestNew(t *testing.T) {
-	_, err := New(nil, "")
+	_, _, err := New(nil, "")
 	assert.NoError(t, err, "should not create any error")
 }
 
 func TestLookupFindNonExisting(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	_, err = r.LookupFind(arbitraryString)
 
 	assert.ErrorIs(t, err, lookup.ErrNotFound)
 }
 
 func TestLookupDeleteFindNonExisting(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	_, err = r.DeleteFind(arbitraryString)
 
 	assert.ErrorIs(t, err, deleter.ErrNotFound)
 }
 
 func TestDeleteNonExisting(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	err = r.Delete(arbitraryString, arbitraryString)
 
 	assert.ErrorIs(t, err, deleter.ErrNotFound)
 }
 
 func TestStore(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	rs := adder.RedirectStorage{}
 	err = r.Store(rs)
 	assert.NoError(t, err)
 }
 
 func TestStoreCodeTwice(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	rs := adder.RedirectStorage{}
 	err = r.Store(rs)
 	assert.NoError(t, err)
@@ -65,7 +65,7 @@ func TestStoreCodeTwice(t *testing.T) {
 }
 
 func TestStoreLookupFind(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	rs := adder.RedirectStorage{}
 	err = r.Store(rs)
 	if assert.NoError(t, err) {
@@ -90,7 +90,7 @@ func TestStoreLookupFind(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	rs := adder.RedirectStorage{}
 	err = r.Store(rs)
 	if assert.NoError(t, err) {
@@ -99,7 +99,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteInvalidCode(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	rs := adder.RedirectStorage{}
 	err = r.Store(rs)
 	if assert.NoError(t, err) {
@@ -109,7 +109,7 @@ func TestDeleteInvalidCode(t *testing.T) {
 }
 
 func TestDeleteInvalidToken(t *testing.T) {
-	r, err := New(nil, "")
+	r, _, err := New(nil, "")
 	rs := adder.RedirectStorage{}
 	err = r.Store(rs)
 	if assert.NoError(t, err) {
