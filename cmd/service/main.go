@@ -26,6 +26,7 @@ import (
 	"hex-microservice/repository/sqlite"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -63,9 +64,6 @@ const (
 	configKeyRouter     = "router"
 	configKeyRepository = "repository"
 )
-
-// split the repository string by the format: 'key://'
-const repositoryTypeSeparator = ":"
 
 var (
 	// used default repository implementation
@@ -148,11 +146,9 @@ func getConfiguration(log logr.Logger) (*configuration, error) {
 	repositoryType := defaultRouter.String()
 	repositoryArgs := defaultRepositoryArgs
 
-	// split the format by: 'type://params'
-	repositoryParts := strings.Split(v.GetString(configKeyRepository), repositoryTypeSeparator)
-	if len(repositoryParts) > 0 {
-		repositoryType = repositoryParts[0]
-		repositoryArgs = v.GetString(configKeyRepository)
+	if parts, err := url.Parse(v.GetString(configKeyRepository)); err == nil {
+		repositoryType = parts.Scheme
+		repositoryArgs = parts.String()
 	}
 
 	repository, ok := value.FirstByString(repositoryImplementations, strings.ToLower, repositoryType)

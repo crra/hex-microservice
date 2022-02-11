@@ -18,8 +18,9 @@ type gormSqliteRepository struct {
 	db     *gorm.DB
 }
 
-func New(parent context.Context, config string) (repository.RedirectRepository, repository.Close, error) {
-	database, err := gorm.Open("sqlite3", config)
+func New(parent context.Context, url string) (repository.RedirectRepository, repository.Close, error) {
+	dsn := strings.TrimPrefix(url, "sqlite://")
+	database, err := gorm.Open("sqlite3", dsn)
 	if err != nil {
 		panic("Failed to connect to database!")
 	}

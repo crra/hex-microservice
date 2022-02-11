@@ -13,7 +13,7 @@ import (
 	"hex-microservice/deleter"
 	"hex-microservice/lookup"
 	"hex-microservice/repository"
-	"net/url"
+	"strings"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -58,16 +58,9 @@ func databaseUp(database *sql.DB) error {
 }
 
 // New creates a new repository using sqlite as backend.
-func New(parent context.Context, config string) (repository.RedirectRepository, repository.Close, error) {
-	urlParts, err := url.Parse(config)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// TODO: use and apply properties
-	_ = urlParts
-
-	database, err := sql.Open("sqlite3", config)
+func New(parent context.Context, url string) (repository.RedirectRepository, repository.Close, error) {
+	dsn := strings.TrimPrefix(url, "sqlite://")
+	database, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, nil, err
 	}
