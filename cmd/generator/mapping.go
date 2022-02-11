@@ -49,6 +49,8 @@ func typeConverters(f afero.Fs) ([]converter, error) {
 		configForPackage(repositoryTemplate, "repository", "memory"),
 		configForPackage(repositoryTemplate, "repository", "redis"),
 		configForPackage(repositoryTemplate, "repository", "mongo"),
+		// NOTE: "sqlite" performed the mapping manually
+		configForPackage(repositoryTemplate, "repository", "gormsqlite"),
 
 		configForPackage(serviceTemplate, "adder"),
 		configForPackage(serviceTemplate, "lookup"),

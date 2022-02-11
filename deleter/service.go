@@ -8,9 +8,7 @@ import (
 )
 
 // ErrNotFound signals that the desired redirect is not found
-var (
-	ErrNotFound = errors.New("redirect not found")
-)
+var ErrNotFound = errors.New("redirect not found")
 
 // Repository defines the method the service expects from
 // a repository implementation.

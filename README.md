@@ -15,6 +15,38 @@ Based on the series from [tensor-programming](https://github.com/tensor-programm
 
 The implementation in this repository ~~could be a little~~ _is_ over-engineered for such a simple project. It exists mostly for its educational purpose and as an experiment to break with traditional approaches (e.g. the active record pattern, ORM, storing JSON in redis, coupling of the domain and the entities).
 
+# Configuration
+
+This repository is intended for educational purposed. By advocating a certain architecture style (see below), it offers multiple implementations for specific aspects in the final binary. As a side effect it requires dependencies (e.g. sqlite with CGO) even if an option is not used via the configuration. The following aspects can be configured on start-up time:
+
+- the _router_, takes no addition attributes and shall be one of the following:
+  - go: [stdlib only router](https://benhoyt.com/writings/web-service-stdlib/)
+  - chi: [chi router](github.com/go-chi/chi/v5)
+  - httprouter: [httprouter](github.com/julienschmidt/httprouter)
+  - gorilla: [gorilla/mux](github.com/gorilla/mux)
+- the _repository_, specifies the dsn (Data Source Name)
+  - memory: a simple map based implementation with locking
+  - sqlite: [sqlite3](github.com/mattn/go-sqlite3)
+  - gormsqlite: [gorm](github.com/jinzhu/gorm)
+  - redis: [redis](github.com/go-redis/redis/v8)
+  - mongo: [mongo](go.mongodb.org/mongo-driver)
+
+It can be configured either by a `shortener.env` file or by setting the environment variables directly.
+
+## Examples
+
+Plain sqlite repository:
+
+```
+repository=gormsqlite://file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true
+```
+
+Gorm (ORM) + an sqlite repository:
+
+```
+repository=gormsqlite://file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true
+```
+
 ## Golang 1.18
 
 As of today (January, 2022), golang 1.18 with generics is not yet released, but betas are available. Please refer to: https://go.dev/blog/go1.18beta2
@@ -103,7 +135,6 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 # Todo and Ideas
 
 - implement and test mongo backend
-- ~~implement and test other routers than `chi`~~
 - implement the code generator that creates the conversion code that performs the conversion without runtime inspection (reflection)
 - compare this custom golang lib version (this) with an existing framework like spring boot (e.g. input validation)
 - handle key collisions

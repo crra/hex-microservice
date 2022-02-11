@@ -7,5 +7,13 @@
   "gopls": {
     "gofumpt": true
   },
-  "cSpell.words": ["bson", "logr"]
+  "cSpell.words": [
+    "bson",
+    "gorm",
+    "gormsqlite",
+    "iofs",
+    "jinzhu",
+    "logr",
+    "mattn"
+  ]
 }

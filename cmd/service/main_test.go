@@ -67,8 +67,10 @@ func TestHealth(t *testing.T) {
 func TestRedirectGetRoot(t *testing.T) {
 	t.Parallel()
 
-	repository, err := memory.New(context.Background(), "")
+	repository, close, err := memory.New(context.Background(), "")
 	if assert.NoError(t, err) {
+		defer close()
+
 		lookupService := lookup.New(discardingLogger, repository)
 
 		for _, ri := range routerImplementations {
@@ -98,8 +100,10 @@ func TestRedirectGetExisting(t *testing.T) {
 		url   = "https://example.com/"
 	)
 
-	repository, err := memory.New(context.Background(), "")
+	repository, close, err := memory.New(context.Background(), "")
 	if assert.NoError(t, err) {
+		defer close()
+
 		err = repository.Store(adder.RedirectStorage{
 			Code:  code,
 			Token: token,
@@ -142,8 +146,10 @@ func TestRedirectAdd(t *testing.T) {
 		t.Run(ri.name, func(t *testing.T) {
 			t.Parallel()
 
-			repository, err := memory.New(context.Background(), "")
+			repository, close, err := memory.New(context.Background(), "")
 			if assert.NoError(t, err) {
+				defer close()
+
 				adderService := adder.New(discardingLogger, repository)
 
 				router := ri.new(discardingLogger, "", nil, adderService, nil, nil)
@@ -168,8 +174,10 @@ func TestRedirectDeleteNonExisting(t *testing.T) {
 		token = "token"
 	)
 
-	repository, err := memory.New(context.Background(), "")
+	repository, close, err := memory.New(context.Background(), "")
 	if assert.NoError(t, err) {
+		defer close()
+
 		deleterService := deleter.New(discardingLogger, repository)
 
 		for _, ri := range routerImplementations {
@@ -205,8 +213,10 @@ func TestRedirectDeleteExisting(t *testing.T) {
 		t.Run(ri.name, func(t *testing.T) {
 			t.Parallel()
 
-			repository, err := memory.New(context.Background(), "")
+			repository, close, err := memory.New(context.Background(), "")
 			if assert.NoError(t, err) {
+				defer close()
+
 				err = repository.Store(adder.RedirectStorage{
 					Code:  code,
 					Token: token,

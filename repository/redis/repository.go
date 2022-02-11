@@ -37,15 +37,15 @@ func newClient(parent context.Context, URL string) (*redis.Client, error) {
 	return client, nil
 }
 
-func New(parent context.Context, url string) (repository.RedirectRepository, error) {
+func New(parent context.Context, url string) (repository.RedirectRepository, repository.Close, error) {
 	client, err := newClient(parent, url)
 	if err != nil {
-		return nil, fmt.Errorf("redisRepository.New client creation: %w", err)
+		return nil, nil, fmt.Errorf("redisRepository.New client creation: %w", err)
 	}
 
 	redisMappingsOfRedirect, err := value.Mapping(redirect{}, redisStructAnnoationTag)
 	if err != nil {
-		return nil, fmt.Errorf("redisRepository.New parsing redirect declaration: %w", err)
+		return nil, nil, fmt.Errorf("redisRepository.New parsing redirect declaration: %w", err)
 	}
 
 	return &redisRepository{
@@ -53,7 +53,7 @@ func New(parent context.Context, url string) (repository.RedirectRepository, err
 		client: client,
 
 		redisMappingsOfRedirect: redisMappingsOfRedirect,
-	}, nil
+	}, client.Close, nil
 }
 
 func generateKey(code string) string {
