@@ -32,9 +32,9 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 
 	r.HandleFunc("/health", s.Health()).Methods("GET")
 
-	r.HandleFunc(fmt.Sprintf("/{%s}", rest.UrlParameterCode), s.RedirectGet(mappedURL)).Methods("GET")
-	r.HandleFunc("/", s.RedirectPost(mappedURL)).Methods("POST")
-	r.HandleFunc(fmt.Sprintf("/{%s}/{%s}", rest.UrlParameterCode, rest.UrlParameterToken), s.RedirectDelete(mappedURL)).Methods("DELETE")
+	r.HandleFunc(fmt.Sprintf("/{%s}", rest.UrlParameterCode), s.RedirectGet(mappedURL)).Methods(http.MethodGet)
+	r.HandleFunc("/", s.RedirectPost(mappedURL)).Methods(http.MethodPost)
+	r.HandleFunc(fmt.Sprintf("/{%s}/{%s}", rest.UrlParameterCode, rest.UrlParameterToken), s.RedirectDelete(mappedURL)).Methods(http.MethodDelete)
 
 	return r
 }

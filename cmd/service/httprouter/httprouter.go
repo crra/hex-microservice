@@ -26,7 +26,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 	s := rest.New(log, h, a, l, d, paramFunc)
 
 	// this is bad: https://github.com/julienschmidt/httprouter/issues/183
-	r.HandlerFunc("GET", fmt.Sprintf("/:%s", rest.UrlParameterCode), func(rw http.ResponseWriter, r *http.Request) {
+	r.HandlerFunc(http.MethodGet, fmt.Sprintf("/:%s", rest.UrlParameterCode), func(rw http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/health") {
 			s.Health()(rw, r)
 			return
@@ -35,8 +35,8 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 		s.RedirectGet(mappedURL)(rw, r)
 	})
 
-	r.Handler("DELETE", fmt.Sprintf("/:%s/:%s", rest.UrlParameterCode, rest.UrlParameterToken), s.RedirectDelete(mappedURL))
-	r.Handler("POST", "/", s.RedirectPost(mappedURL))
+	r.Handler(http.MethodDelete, fmt.Sprintf("/:%s/:%s", rest.UrlParameterCode, rest.UrlParameterToken), s.RedirectDelete(mappedURL))
+	r.Handler(http.MethodPost, "/", s.RedirectPost(mappedURL))
 
 	return r
 }

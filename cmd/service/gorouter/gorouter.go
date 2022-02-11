@@ -117,13 +117,13 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 		switch path {
 		case "/health":
 			switch r.Method {
-			case "GET":
+			case http.MethodGet:
 				s.Health()(rw, r)
 				return
 			}
 		case "/":
 			switch r.Method {
-			case "POST":
+			case http.MethodPost:
 				s.RedirectPost(mappedURL)(rw, r)
 				return
 			}
@@ -132,7 +132,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 		const prefix = "/"
 		if r := match(r, withoutPrefix(path, prefix), rest.UrlParameterCode); r != nil {
 			switch r.Method {
-			case "GET":
+			case http.MethodGet:
 				s.RedirectGet(mappedURL)(rw, r)
 				return
 			}
@@ -140,7 +140,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 
 		if r := match(r, withoutPrefix(path, prefix), rest.UrlParameterCode, rest.UrlParameterToken); r != nil {
 			switch r.Method {
-			case "DELETE":
+			case http.MethodDelete:
 				s.RedirectDelete(mappedURL)(rw, r)
 				return
 			}

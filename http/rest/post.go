@@ -90,12 +90,12 @@ func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 				{
 					Href: strings.Join([]string{mappingUrl, results[0].Code}, "/"),
 					Rel:  resourceName,
-					T:    "GET",
+					T:    http.MethodGet,
 				},
 				{
 					Href: strings.Join([]string{mappingUrl, results[0].Code, results[0].Token}, "/"),
 					Rel:  resourceName,
-					T:    "DELETE",
+					T:    http.MethodDelete,
 				},
 			},
 		}

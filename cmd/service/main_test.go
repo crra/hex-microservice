@@ -49,7 +49,7 @@ func TestHealth(t *testing.T) {
 			t.Parallel()
 
 			router := ri.new(discardingLogger, "", healthService, nil, nil, nil)
-			request := httptest.NewRequest("GET", "/health", nil)
+			request := httptest.NewRequest(http.MethodGet, "/health", nil)
 			responseRecorder := httptest.NewRecorder()
 			router.ServeHTTP(responseRecorder, request)
 
@@ -120,7 +120,7 @@ func TestRedirectGetExisting(t *testing.T) {
 					t.Parallel()
 
 					router := ri.new(discardingLogger, "", nil, nil, lookupService, nil)
-					request := httptest.NewRequest("GET", "/"+code, nil)
+					request := httptest.NewRequest(http.MethodGet, "/"+code, nil)
 					responseRecorder := httptest.NewRecorder()
 					router.ServeHTTP(responseRecorder, request)
 
