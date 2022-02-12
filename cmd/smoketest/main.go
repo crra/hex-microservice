@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hex-microservice/customcontext"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -57,6 +59,47 @@ func mustSuccess(client HTTPClientDo, r *http.Request) (*http.Response, error) {
 	return response, nil
 }
 
+type testfunc func() error
+
+func (a *app) testRunner(cmd *cobra.Command, args []string) error {
+	testCtx, testCtxCancel := customcontext.WithErrorCanceller(a.parent)
+	defer testCtxCancel(nil)
+
+	// inspired by: https://gist.github.com/jesselucas/179e70a684b6df18189fdaaa24f852cf
+	wg := sync.WaitGroup{}
+	waitCh := make(chan struct{})
+
+	go func() {
+		for _, t := range []struct {
+			name string
+			f    testfunc
+		}{{name: "health", f: a.testHealth}} {
+			t := t // pin
+			wg.Add(1)
+			go func(cancel func(error), wg *sync.WaitGroup) {
+				defer wg.Done()
+				if err := t.f(); err != nil {
+					cancel(fmt.Errorf("%s: %w", t.name, err))
+				}
+			}(testCtxCancel, &wg)
+		}
+
+		wg.Wait()
+		close(waitCh)
+	}()
+
+	select {
+	case <-testCtx.Done():
+		if err := testCtx.Err(); err != nil {
+			return err
+		}
+	case <-waitCh:
+		fmt.Fprintf(a.status, "Success: all tests completed\n")
+	}
+
+	return nil
+}
+
 func run(parent context.Context, log logr.Logger, status io.Writer, client HTTPClientDo) error {
 	if client == nil {
 		client = func() HTTPClientDo {
@@ -82,13 +125,7 @@ func run(parent context.Context, log logr.Logger, status io.Writer, client HTTPC
 
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := app.testHealth(); err != nil {
-				return err
-			}
-
-			return nil
-		},
+		RunE: app.testRunner,
 	}
 
 	f := cmd.Flags()
@@ -115,7 +152,7 @@ func main() {
 
 	// run the program and clean up
 	if err := run(context, log, os.Stdout, nil); err != nil {
-		log.Error(err, "")
+		log.Error(err, "smoke test failed")
 		os.Exit(1)
 	}
 }
