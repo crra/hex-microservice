@@ -7,7 +7,9 @@ import (
 	"hex-microservice/health"
 	"hex-microservice/lookup"
 	"net/http"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"
 	"github.com/vmihailenco/msgpack"
 )
@@ -29,10 +31,14 @@ const (
 type ParamFn func(r *http.Request, key string) string
 
 type Handler interface {
-	Health() http.HandlerFunc
+	Health(now time.Time) http.HandlerFunc
 	RedirectGet(mappingUrl string) http.HandlerFunc
 	RedirectPost(mappingUrl string) http.HandlerFunc
 	RedirectDelete(mappingUrl string) http.HandlerFunc
+}
+
+type GinHandler interface {
+	Health() gin.HandlerFunc
 }
 
 type converter struct {
@@ -75,6 +81,17 @@ type handler struct {
 	converters map[string]converter
 }
 
+type ginhandler struct {
+	log logr.Logger
+
+	// services
+	adder      adder.Service
+	lookup     lookup.Service
+	deleter    deleter.Service
+	health     health.Service
+	converters map[string]converter
+}
+
 type ApiError struct {
 	StatusCode int    `json:"status"`
 	Title      string `json:"title"`
@@ -84,6 +101,22 @@ func New(log logr.Logger, health health.Service, adder adder.Service, lookup loo
 	return &handler{
 		log:     log,
 		paramFn: paramFn,
+		health:  health,
+		adder:   adder,
+		lookup:  lookup,
+		deleter: deleter,
+		// NOTE: not really sure if this is a good pattern with the lookup table,
+		// but it was taken from the original example.
+		converters: map[string]converter{
+			contentTypeJson:        {json.Unmarshal, json.Marshal},
+			contentTypeMessagePack: {msgpack.Unmarshal, msgpack.Marshal},
+		},
+	}
+}
+
+func NewGin(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) GinHandler {
+	return &ginhandler{
+		log:     log,
 		health:  health,
 		adder:   adder,
 		lookup:  lookup,

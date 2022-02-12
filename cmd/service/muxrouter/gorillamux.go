@@ -8,6 +8,7 @@ import (
 	"hex-microservice/http/rest"
 	"hex-microservice/lookup"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-logr/logr"
@@ -30,7 +31,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 		return mux.Vars(r)[key]
 	})
 
-	r.HandleFunc("/health", s.Health()).Methods("GET")
+	r.HandleFunc("/health", s.Health(time.Now())).Methods("GET")
 
 	r.HandleFunc(fmt.Sprintf("/{%s}", rest.UrlParameterCode), s.RedirectGet(mappedURL)).Methods(http.MethodGet)
 	r.HandleFunc("/", s.RedirectPost(mappedURL)).Methods(http.MethodPost)

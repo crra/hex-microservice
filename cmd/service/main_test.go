@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/stdr"
 	"github.com/stretchr/testify/assert"
@@ -34,8 +35,9 @@ func TestHealth(t *testing.T) {
 		name    = "name"
 		version = "version"
 	)
+	start := time.Now()
 
-	healthService := health.New(name, version)
+	healthService := health.New(name, version, start)
 
 	type healthResponse struct {
 		Name    string `json:"name"`
@@ -54,7 +56,7 @@ func TestHealth(t *testing.T) {
 			router.ServeHTTP(responseRecorder, request)
 
 			if assert.Equal(t, http.StatusOK, responseRecorder.Result().StatusCode) {
-				if assert.Equal(t, "application/json", responseRecorder.Header().Get("content-type")) {
+				if assert.Contains(t, responseRecorder.Header().Get("content-type"), "application/json") {
 					response := &healthResponse{}
 					json.Unmarshal(responseRecorder.Body.Bytes(), response)
 					assert.Equal(t, &healthResponse{Name: name, Version: version}, response)
@@ -80,7 +82,7 @@ func TestRedirectGetRoot(t *testing.T) {
 				t.Parallel()
 
 				router := ri.new(discardingLogger, "", nil, nil, lookupService, nil)
-				request := httptest.NewRequest("GET", "/", nil)
+				request := httptest.NewRequest(http.MethodGet, "/", nil)
 				responseRecorder := httptest.NewRecorder()
 				router.ServeHTTP(responseRecorder, request)
 

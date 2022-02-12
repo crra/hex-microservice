@@ -24,6 +24,7 @@ This repository is intended for educational purposed. By advocating a certain ar
   - chi: [chi router](github.com/go-chi/chi/v5)
   - httprouter: [httprouter](github.com/julienschmidt/httprouter)
   - gorilla: [gorilla/mux](github.com/gorilla/mux)
+  - gin: [gin](https://github.com/gin-gonic/gin) uses an alternative implementation for `http/rest` due to the different method signatures of the handlerFunc
 - the _repository_, specifies the dsn (Data Source Name)
   - memory: a simple map based implementation with locking
   - sqlite: [sqlite3](github.com/mattn/go-sqlite3)

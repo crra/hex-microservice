@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hex-microservice/adder"
 	"hex-microservice/cmd/service/chirouter"
+	"hex-microservice/cmd/service/ginrouter"
 	"hex-microservice/cmd/service/gorouter"
 	"hex-microservice/cmd/service/httprouter"
 	"hex-microservice/cmd/service/muxrouter"
@@ -96,6 +97,7 @@ var routerImplementations = []routerImpl{
 	{"chi", chirouter.New},
 	{"gorilla", muxrouter.New},
 	{"httprouter", httprouter.New},
+	{"gin", ginrouter.New},
 }
 
 // available repository implementations
@@ -188,7 +190,7 @@ func run(parent context.Context, log logr.Logger) error {
 	lookupService := lookup.New(log, repository)
 	adderService := adder.New(log, repository)
 	deleteService := deleter.New(log, repository)
-	healthService := health.New(name, version)
+	healthService := health.New(name, version, time.Now())
 
 	// initialize the configured router
 	// use a factory function (new) of the supported type

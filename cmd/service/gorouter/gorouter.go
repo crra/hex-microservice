@@ -10,6 +10,7 @@ import (
 	"hex-microservice/lookup"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 )
@@ -118,7 +119,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 		case "/health":
 			switch r.Method {
 			case http.MethodGet:
-				s.Health()(rw, r)
+				s.Health(time.Now())(rw, r)
 				return
 			}
 		case "/":

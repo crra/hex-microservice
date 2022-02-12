@@ -9,6 +9,7 @@ import (
 	"hex-microservice/lookup"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	org "github.com/julienschmidt/httprouter"
@@ -28,7 +29,7 @@ func New(log logr.Logger, mappedURL string, h health.Service, a adder.Service, l
 	// this is bad: https://github.com/julienschmidt/httprouter/issues/183
 	r.HandlerFunc(http.MethodGet, fmt.Sprintf("/:%s", rest.UrlParameterCode), func(rw http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/health") {
-			s.Health()(rw, r)
+			s.Health(time.Now())(rw, r)
 			return
 		}
 
