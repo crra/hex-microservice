@@ -4,12 +4,13 @@ import (
 	"errors"
 	"hex-microservice/lookup"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
-// RedirectGet implements the "get" verb of the REST context that gets an existing redirect.
-func (h *handler) RedirectGet(mappingUrl string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		code := h.paramFn(r, UrlParameterCode)
+func (h *ginhandler) RedirectGet(mappingUrl string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		code := c.Param(UrlParameterCode)
 
 		redirect, err := h.lookup.Lookup(
 			lookup.RedirectQuery{Code: code},
@@ -25,11 +26,11 @@ func (h *handler) RedirectGet(mappingUrl string) http.HandlerFunc {
 				h.log.Error(err, "Internal server error", "method", "RedirectGet", UrlParameterCode, code)
 			}
 
-			http.Error(w, http.StatusText(status), status)
+			c.JSON(status, gin.H{"error": http.StatusText(status)})
 			return
 		}
 
-		http.Redirect(w, r, redirect.URL, http.StatusTemporaryRedirect)
+		c.Redirect(http.StatusTemporaryRedirect, redirect.URL)
 		return
 	}
 }
