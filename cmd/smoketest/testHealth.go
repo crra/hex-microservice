@@ -7,6 +7,8 @@ import (
 	"net/http"
 )
 
+const testHealthName = "health endpoint"
+
 // testHealth performs the smoke test for the health endpoint.
 func (a *app) testHealth() error {
 	url := a.url + "/health"
@@ -50,6 +52,5 @@ func (a *app) testHealth() error {
 		return fmt.Errorf("'uptime' is empty")
 	}
 
-	fmt.Fprintf(a.status, "Success: 'health endpoint operational'\n")
 	return nil
 }

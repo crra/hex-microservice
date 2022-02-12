@@ -73,14 +73,16 @@ func (a *app) testRunner(cmd *cobra.Command, args []string) error {
 		for _, t := range []struct {
 			name string
 			f    testfunc
-		}{{name: "health", f: a.testHealth}} {
+		}{{name: testHealthName, f: a.testHealth}} {
 			t := t // pin
 			wg.Add(1)
 			go func(cancel func(error), wg *sync.WaitGroup) {
 				defer wg.Done()
 				if err := t.f(); err != nil {
 					cancel(fmt.Errorf("%s: %w", t.name, err))
+					return
 				}
+				fmt.Fprintf(a.status, "Success: %s\n", t.name)
 			}(testCtxCancel, &wg)
 		}
 
