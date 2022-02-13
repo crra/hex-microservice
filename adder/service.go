@@ -55,10 +55,13 @@ func (s *service) Add(redirects ...RedirectCommand) ([]RedirectResult, error) {
 			return results, fmt.Errorf("service.Redirect: %w", ErrRedirectInvalid)
 		}
 
-		// TODO: custom code
-		code, err := shortid.Generate()
-		if err != nil {
-			return results, err
+		code := redirect.CustomCode
+		if code == "" {
+			var err error
+			code, err = shortid.Generate()
+			if err != nil {
+				return results, err
+			}
 		}
 
 		// storage view

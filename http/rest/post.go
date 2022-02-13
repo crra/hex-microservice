@@ -74,6 +74,7 @@ func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 		results, err := h.adder.Add(
 			adder.RedirectCommand{
 				URL:        red.URL,
+				CustomCode: red.CustomCode,
 				ClientInfo: getIP(r),
 			})
 		if err != nil {
