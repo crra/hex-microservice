@@ -28,27 +28,26 @@ func (a *app) testHealth() error {
 		return fmt.Errorf("can't read response body: %v", err)
 	}
 
-	type healthResponse struct {
+	var healthResponse struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 		Uptime  string `json:"uptime"`
 	}
 
-	var hr healthResponse
-	if err := json.Unmarshal(body, &hr); err != nil {
+	if err := json.Unmarshal(body, &healthResponse); err != nil {
 		return fmt.Errorf("can't parse response body: %v", err)
 	}
 
 	// just check if values are not empty
-	if hr.Name == "" {
+	if healthResponse.Name == "" {
 		return fmt.Errorf("'version' is empty")
 	}
 
-	if hr.Version == "" {
+	if healthResponse.Version == "" {
 		return fmt.Errorf("'version' is empty")
 	}
 
-	if hr.Uptime == "" {
+	if healthResponse.Uptime == "" {
 		return fmt.Errorf("'uptime' is empty")
 	}
 

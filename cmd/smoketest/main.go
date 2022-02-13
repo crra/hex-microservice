@@ -30,6 +30,11 @@ const (
 	defaultPathPrefix = "/"
 )
 
+const (
+	contentTypeMessagePack = "application/x-msgpack"
+	contentTypeJson        = "application/json"
+)
+
 type HTTPClientDo interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -85,7 +90,10 @@ func (a *app) testRunner(cmd *cobra.Command, args []string) error {
 		for _, t := range []struct {
 			name string
 			f    testfunc
-		}{{name: testHealthName, f: a.testHealth}} {
+		}{
+			{name: testHealthName, f: a.testHealth},
+			{name: testHappyName, f: a.testHappy},
+		} {
 			t := t // pin
 			wg.Add(1)
 
