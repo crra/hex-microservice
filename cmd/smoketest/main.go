@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,9 +20,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const flagUrl = "url"
+const (
+	flagUrl        = "url"
+	flagPathPrefix = "path"
+)
 
-const defaultUrl = "http://localhost:8000"
+const (
+	defaultUrl        = "http://localhost:8000"
+	defaultPathPrefix = "/"
+)
 
 type HTTPClientDo interface {
 	Do(req *http.Request) (*http.Response, error)
@@ -40,6 +47,7 @@ var errNonOkStatusCode = errors.New("non-ok http status code")
 type app struct {
 	parent context.Context
 	url    string
+	path   string
 	status io.Writer
 	client HTTPClientDo
 }
@@ -61,6 +69,10 @@ func mustSuccess(client HTTPClientDo, r *http.Request) (*http.Response, error) {
 
 type testfunc func() error
 
+func (a *app) newUrl(p string) string {
+	return a.url + a.path + p
+}
+
 func (a *app) testRunner(cmd *cobra.Command, args []string) error {
 	testCtx, testCtxCancel := customcontext.WithErrorCanceller(a.parent)
 	defer testCtxCancel(nil)
@@ -69,26 +81,28 @@ func (a *app) testRunner(cmd *cobra.Command, args []string) error {
 	wg := sync.WaitGroup{}
 	waitCh := make(chan struct{})
 
-	go func() {
+	go func(wg *sync.WaitGroup, waitChan <-chan struct{}) {
 		for _, t := range []struct {
 			name string
 			f    testfunc
 		}{{name: testHealthName, f: a.testHealth}} {
 			t := t // pin
 			wg.Add(1)
+
 			go func(cancel func(error), wg *sync.WaitGroup) {
 				defer wg.Done()
 				if err := t.f(); err != nil {
 					cancel(fmt.Errorf("%s: %w", t.name, err))
 					return
 				}
+
 				fmt.Fprintf(a.status, "Success: %s\n", t.name)
-			}(testCtxCancel, &wg)
+			}(testCtxCancel, wg)
 		}
 
 		wg.Wait()
 		close(waitCh)
-	}()
+	}(&wg, waitCh)
 
 	select {
 	case <-testCtx.Done():
@@ -125,6 +139,18 @@ func run(parent context.Context, log logr.Logger, status io.Writer, client HTTPC
 				return err
 			}
 
+			if strings.HasSuffix(app.url, "/") {
+				app.url = app.url[:len(app.url)-1]
+			}
+
+			if !strings.HasPrefix(app.path, "/") {
+				app.path = "/" + app.path
+			}
+
+			if !strings.HasSuffix(app.path, "/") {
+				app.path += "/"
+			}
+
 			return nil
 		},
 		RunE: app.testRunner,
@@ -134,6 +160,7 @@ func run(parent context.Context, log logr.Logger, status io.Writer, client HTTPC
 	f.SortFlags = false // prefer the order defined by the code
 
 	f.StringVar(&app.url, flagUrl, app.url, "url of the endpoint")
+	f.StringVar(&app.path, flagPathPrefix, app.path, "prefix of the endpoint")
 
 	return cmd.Execute()
 }

@@ -11,7 +11,7 @@ const testHealthName = "health endpoint"
 
 // testHealth performs the smoke test for the health endpoint.
 func (a *app) testHealth() error {
-	url := a.url + "/health"
+	url := a.newUrl("health")
 
 	request, err := http.NewRequestWithContext(a.parent, http.MethodGet, url, nil)
 	if err != nil {
