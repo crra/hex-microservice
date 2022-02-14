@@ -3,7 +3,7 @@ package repository_test
 import (
 	"context"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"hex-microservice/repository"
 	"hex-microservice/repository/gormsqlite"
@@ -27,7 +27,7 @@ var repositoryImplementations = []struct {
 	},
 	{
 		"gorm + sqlite",
-		// 	//"file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true",
+		//"file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true",
 		":memory:",
 		gormsqlite.New,
 	},
@@ -47,14 +47,14 @@ func TestLookupNonExisting(t *testing.T) {
 			if assert.NoError(t, err) {
 				defer close()
 
-				_, err := repo.LookupFind(code)
+				_, err := repo.Lookup(code)
 				assert.ErrorIs(t, err, lookup.ErrNotFound)
 			}
 		})
 	}
 }
 
-func TestRedirectAddAndReadBack(t *testing.T) {
+func TestStoreAndReadBack(t *testing.T) {
 	ctx := context.Background()
 
 	const (
@@ -78,15 +78,10 @@ func TestRedirectAddAndReadBack(t *testing.T) {
 					Token: token,
 					URL:   url,
 				})
-
 				if assert.NoError(t, err) {
-					lookupFind, err := repo.LookupFind(code)
+					lookedUp, err := repo.Lookup(code)
 					if assert.NoError(t, err) {
-						deleteFind, err := repo.DeleteFind(code)
-						if assert.NoError(t, err) {
-							assert.Equal(t, code, lookupFind.Code)
-							assert.Equal(t, code, deleteFind.Code)
-						}
+						assert.Equal(t, code, lookedUp.Code)
 					}
 				}
 			}
@@ -94,7 +89,7 @@ func TestRedirectAddAndReadBack(t *testing.T) {
 	}
 }
 
-func TestRedirectAddTwice(t *testing.T) {
+func TestStoreTwice(t *testing.T) {
 	ctx := context.Background()
 
 	const (
@@ -118,9 +113,7 @@ func TestRedirectAddTwice(t *testing.T) {
 					Token: token,
 					URL:   url,
 				})
-
 				if assert.NoError(t, err) {
-
 					err = repo.Store(adder.RedirectStorage{
 						Code:  code,
 						Token: token,
@@ -134,13 +127,12 @@ func TestRedirectAddTwice(t *testing.T) {
 	}
 }
 
-func TestRedirectRemoveNonExisting(t *testing.T) {
+func TestInvalidateNonExisting(t *testing.T) {
 	ctx := context.Background()
 
 	const (
 		code  = "code"
 		token = "token"
-		url   = "https://example.com"
 	)
 
 	for _, ri := range repositoryImplementations {
@@ -153,14 +145,48 @@ func TestRedirectRemoveNonExisting(t *testing.T) {
 			if assert.NoError(t, err) {
 				defer close()
 
-				err := repo.Delete(code, token)
-				assert.ErrorIs(t, err, deleter.ErrNotFound)
+				err := repo.Invalidate(code, token)
+				assert.ErrorIs(t, err, invalidator.ErrNotFound)
 			}
 		})
 	}
 }
 
-func TestRedirectRemove(t *testing.T) {
+func TestInvalidateInvalidToken(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		code         = "code"
+		token        = "token"
+		invalidToken = token + token
+		url          = "https://example.com"
+	)
+
+	for _, ri := range repositoryImplementations {
+		ri := ri // pin
+
+		t.Run(ri.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo, close, err := ri.new(ctx, ri.config)
+			if assert.NoError(t, err) {
+				defer close()
+
+				err = repo.Store(adder.RedirectStorage{
+					Code:  code,
+					Token: token,
+					URL:   url,
+				})
+				if assert.NoError(t, err) {
+					err := repo.Invalidate(code, invalidToken)
+					assert.ErrorIs(t, err, invalidator.ErrNotFound)
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidate(t *testing.T) {
 	ctx := context.Background()
 
 	const (
@@ -184,13 +210,52 @@ func TestRedirectRemove(t *testing.T) {
 					Token: token,
 					URL:   url,
 				})
-
 				if assert.NoError(t, err) {
-
-					err := repo.Delete(code, token)
+					err := repo.Invalidate(code, token)
 					if assert.NoError(t, err) {
-						_, err := repo.LookupFind(code)
+						_, err := repo.Lookup(code)
 						assert.ErrorIs(t, err, lookup.ErrNotFound)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestInvalidateAndAdd(t *testing.T) {
+	ctx := context.Background()
+
+	const (
+		code  = "code"
+		token = "token"
+		url   = "https://example.com"
+	)
+
+	for _, ri := range repositoryImplementations {
+		ri := ri // pin
+
+		t.Run(ri.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo, close, err := ri.new(ctx, ri.config)
+			if assert.NoError(t, err) {
+				defer close()
+
+				err = repo.Store(adder.RedirectStorage{
+					Code:  code,
+					Token: token,
+					URL:   url,
+				})
+				if assert.NoError(t, err) {
+					err := repo.Invalidate(code, token)
+					if assert.NoError(t, err) {
+						err = repo.Store(adder.RedirectStorage{
+							Code:  code,
+							Token: token,
+							URL:   url,
+						})
+
+						assert.ErrorIs(t, err, adder.ErrDuplicate)
 					}
 				}
 			}

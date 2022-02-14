@@ -4,7 +4,7 @@ This repository contains a very simple example project to explore the applicatio
 
 Tries to give an answer if in an example code one can find: "error handling omitted for simplicity".
 
-The service represents a very simple URL shortener service. Offers basic CRD (create, read, delete) operations via REST.
+The service represents a very simple URL shortener service. Offers basic CRD (create, read, delet/invalidate) operations via REST.
 
 Based on the series from [tensor-programming](https://github.com/tensor-programming/hex-microservice.git) and recommendations from:
 

@@ -1,4 +1,4 @@
-package deleter
+package invalidator
 
 // RedirectStorage is the storage view for the lookup service.
 type RedirectStorage struct {
@@ -6,7 +6,7 @@ type RedirectStorage struct {
 	Token string
 }
 
-// RedirectQuery is the request query of the deleter service.
+// RedirectQuery is the request query of the invalidator service.
 type RedirectQuery struct {
 	Code  string
 	Token string

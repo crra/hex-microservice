@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
 	"hex-microservice/health"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
+	"hex-microservice/meta/value"
+	"hex-microservice/repository"
 	"hex-microservice/repository/memory"
+	"hex-microservice/repository/sqlite"
 	"io"
 	"log"
 	"net/http"
@@ -23,220 +26,230 @@ import (
 
 var discardingLogger = stdr.New(log.New(io.Discard, "", log.Lshortfile))
 
+var testRepositories = []struct {
+	name   string
+	config string
+	new    newRepositoryFn
+}{
+	{name: "memory", new: memory.New},
+	{name: "sqlite", config: "file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true", new: sqlite.New},
+}
+
 const (
 	contentTypeMessagePack = "application/x-msgpack"
 	contentTypeJson        = "application/json"
 )
 
-func TestHealth(t *testing.T) {
-	t.Parallel()
+const (
+	mappedUrl = "https://service.arpa"
 
-	const (
-		name    = "name"
-		version = "version"
-	)
-	start := time.Now()
+	healthTestName    = "name"
+	healthTestVersion = "version"
+	servicePath       = "_service_"
+	healthPath        = "_health_"
+)
 
-	healthService := health.New(name, version, start)
+var (
+	v1HealthPrefix = value.Join("/", mappedUrl, v1Path, healthPath)
+	v1ServicePath  = value.Join("/", mappedUrl, v1Path, servicePath)
+)
 
-	type healthResponse struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	}
+var (
+	healthTestNow         = time.Now()
+	healthTestStartupTime = healthTestNow.Add(-1 * time.Minute)
+)
 
-	for _, ri := range routerImplementations {
-		ri := ri // pin
-
-		t.Run(ri.name, func(t *testing.T) {
-			t.Parallel()
-
-			router := ri.new(discardingLogger, "", healthService, nil, nil, nil)
-			request := httptest.NewRequest(http.MethodGet, "/health", nil)
-			responseRecorder := httptest.NewRecorder()
-			router.ServeHTTP(responseRecorder, request)
-
-			if assert.Equal(t, http.StatusOK, responseRecorder.Result().StatusCode) {
-				if assert.Contains(t, responseRecorder.Header().Get("content-type"), "application/json") {
-					response := &healthResponse{}
-					json.Unmarshal(responseRecorder.Body.Bytes(), response)
-					assert.Equal(t, &healthResponse{Name: name, Version: version}, response)
-				}
-			}
-		})
-	}
+type v1HealthResponse struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Uptime  string `json:"uptime"`
 }
 
-func TestRedirectGetRoot(t *testing.T) {
-	t.Parallel()
+type link struct {
+	Href string `json:"href"`
+	Rel  string `json:"rel"`
+	T    string `json:"type"`
+}
 
-	repository, close, err := memory.New(context.Background(), "")
-	if assert.NoError(t, err) {
-		defer close()
+type v1CreateResponse struct {
+	Code  string `json:"code"`
+	URL   string `json:"url"`
+	Links []link `json:"_links"`
+}
 
-		lookupService := lookup.New(discardingLogger, repository)
+func matrix(t *testing.T, f func(*testing.T, http.Handler, repository.RedirectRepository)) {
+	for _, routerImp := range routerImplementations {
+		routerImp := routerImp // pin
 
-		for _, ri := range routerImplementations {
-			ri := ri // pin
+		for _, repoImp := range testRepositories {
+			repoImp := repoImp // pin
 
-			t.Run(ri.name, func(t *testing.T) {
-				t.Parallel()
+			t.Run(fmt.Sprintf("router:%s, repository:%s", routerImp.name, repoImp.name), func(t *testing.T) {
+				repository, close, err := repoImp.new(context.Background(), repoImp.config)
+				if assert.NoError(t, err) {
+					defer close()
 
-				router := ri.new(discardingLogger, "", nil, nil, lookupService, nil)
-				request := httptest.NewRequest(http.MethodGet, "/", nil)
-				responseRecorder := httptest.NewRecorder()
-				router.ServeHTTP(responseRecorder, request)
+					router := routerImp.new(discardingLogger, mappedUrl)
+					router.MountV1(
+						v1Path,
+						healthPath,
+						health.New(healthTestName, healthTestVersion, healthTestStartupTime),
 
-				assert.Equal(t, http.StatusNotFound, responseRecorder.Result().StatusCode)
+						servicePath,
+						adder.New(discardingLogger, repository),
+						lookup.New(discardingLogger, repository),
+						invalidator.New(discardingLogger, repository),
+					)
+
+					f(t, router, repository)
+				}
 			})
 		}
-
 	}
 }
 
-func TestRedirectGetExisting(t *testing.T) {
+func v1UrlForCode(code string) string {
+	return value.Join("/", mappedUrl, v1Path, servicePath, code)
+}
+
+func v1UrlForCodeAndToken(code, token string) string {
+	return value.Join("/", mappedUrl, v1Path, servicePath, code, token)
+}
+
+func TestV1Health(t *testing.T) {
+	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
+		request := httptest.NewRequest(http.MethodGet, v1HealthPrefix, nil)
+		responseRecorder := httptest.NewRecorder()
+		router.ServeHTTP(responseRecorder, request)
+
+		if assert.Equal(t, http.StatusOK, responseRecorder.Result().StatusCode) {
+			if assert.Contains(t, responseRecorder.Header().Get("content-type"), "application/json") {
+				response := &v1HealthResponse{}
+				err := json.Unmarshal(responseRecorder.Body.Bytes(), response)
+				if assert.NoError(t, err) {
+					assert.Equal(t, &v1HealthResponse{
+						Name:    healthTestName,
+						Version: healthTestVersion,
+						Uptime:  healthTestNow.Sub(healthTestStartupTime).Round(time.Second).String(),
+					}, response)
+				}
+			}
+		}
+	})
+}
+
+func TestV1RedirectGetRoot(t *testing.T) {
 	t.Parallel()
 
+	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
+		request := httptest.NewRequest(http.MethodGet, v1ServicePath, nil)
+		responseRecorder := httptest.NewRecorder()
+		router.ServeHTTP(responseRecorder, request)
+
+		assert.Equal(t, http.StatusNotFound, responseRecorder.Result().StatusCode)
+	})
+}
+
+func TestV1RedirectGetExisting(t *testing.T) {
 	const (
 		code  = "code"
 		token = "token"
 		url   = "https://example.com/"
 	)
 
-	repository, close, err := memory.New(context.Background(), "")
-	if assert.NoError(t, err) {
-		defer close()
-
-		err = repository.Store(adder.RedirectStorage{
+	matrix(t, func(t *testing.T, router http.Handler, repository repository.RedirectRepository) {
+		err := repository.Store(adder.RedirectStorage{
 			Code:  code,
 			Token: token,
 			URL:   url,
 		})
-
 		if assert.NoError(t, err) {
-			lookupService := lookup.New(discardingLogger, repository)
+			request := httptest.NewRequest(http.MethodGet, v1UrlForCode(code), nil)
+			responseRecorder := httptest.NewRecorder()
+			router.ServeHTTP(responseRecorder, request)
 
-			for _, ri := range routerImplementations {
-				ri := ri // pin
-
-				t.Run(ri.name, func(t *testing.T) {
-					t.Parallel()
-
-					router := ri.new(discardingLogger, "", nil, nil, lookupService, nil)
-					request := httptest.NewRequest(http.MethodGet, "/"+code, nil)
-					responseRecorder := httptest.NewRecorder()
-					router.ServeHTTP(responseRecorder, request)
-
-					if assert.Equal(t, http.StatusTemporaryRedirect, responseRecorder.Result().StatusCode) {
-						assert.Equal(t, url, responseRecorder.Result().Header.Get("location"))
-					}
-				})
+			if assert.Equal(t, http.StatusTemporaryRedirect, responseRecorder.Result().StatusCode) {
+				assert.Equal(t, url, responseRecorder.Result().Header.Get("location"))
 			}
 		}
-	}
+	})
 }
 
-func TestRedirectAdd(t *testing.T) {
-	t.Parallel()
-
+func TestV1RedirectAdd(t *testing.T) {
 	const url = "https://example.com/"
+	const customCode = "_code_"
+	const payload = `{ "url": "` + url + `", "custom_code": "` + customCode + `" }`
 
-	payload := fmt.Sprintf(`{ "url": "%s" }`, url)
+	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
+		request := httptest.NewRequest("POST", v1ServicePath, strings.NewReader(payload))
+		request.Header.Set("Content-Type", contentTypeJson)
+		responseRecorder := httptest.NewRecorder()
+		router.ServeHTTP(responseRecorder, request)
 
-	for _, ri := range routerImplementations {
-		ri := ri // pin
-
-		t.Run(ri.name, func(t *testing.T) {
-			t.Parallel()
-
-			repository, close, err := memory.New(context.Background(), "")
+		if assert.Equal(t, http.StatusCreated, responseRecorder.Result().StatusCode) {
+			response := &v1CreateResponse{}
+			err := json.Unmarshal(responseRecorder.Body.Bytes(), response)
 			if assert.NoError(t, err) {
-				defer close()
+				assert.Equal(t, url, response.URL)
+				assert.Equal(t, customCode, response.Code, "Custom code not applied")
 
-				adderService := adder.New(discardingLogger, repository)
+				if assert.NotEmpty(t, response.Links) {
+					deleteUrl := value.FirstValueFromSlice(response.Links, func(l link) bool {
+						return l.T == http.MethodDelete
+					})
+					assert.NotNil(t, deleteUrl, "Delete URL missing")
 
-				router := ri.new(discardingLogger, "", nil, adderService, nil, nil)
+					getUrl := value.FirstValueFromSlice(response.Links, func(l link) bool {
+						return l.T == http.MethodGet
+					})
+					if assert.NotNil(t, getUrl, "Get URL missing") {
+						if assert.Equal(t, v1UrlForCode(customCode), getUrl.Href) {
+							request := httptest.NewRequest(http.MethodGet, getUrl.Href, nil)
+							responseRecorder := httptest.NewRecorder()
+							router.ServeHTTP(responseRecorder, request)
 
-				request := httptest.NewRequest("POST", "/", strings.NewReader(payload))
-				request.Header.Set("Content-Type", contentTypeJson)
-
-				responseRecorder := httptest.NewRecorder()
-				router.ServeHTTP(responseRecorder, request)
-
-				assert.Equal(t, http.StatusCreated, responseRecorder.Result().StatusCode)
-			}
-		})
-	}
-}
-
-func TestRedirectDeleteNonExisting(t *testing.T) {
-	t.Parallel()
-
-	const (
-		code  = "code"
-		token = "token"
-	)
-
-	repository, close, err := memory.New(context.Background(), "")
-	if assert.NoError(t, err) {
-		defer close()
-
-		deleterService := deleter.New(discardingLogger, repository)
-
-		for _, ri := range routerImplementations {
-			ri := ri // pin
-
-			t.Run(ri.name, func(t *testing.T) {
-				t.Parallel()
-
-				router := ri.new(discardingLogger, "", nil, nil, nil, deleterService)
-
-				request := httptest.NewRequest("DELETE", "/"+code+"/"+token, nil)
-
-				responseRecorder := httptest.NewRecorder()
-				router.ServeHTTP(responseRecorder, request)
-
-				assert.Equal(t, http.StatusNotFound, responseRecorder.Result().StatusCode)
-			})
-		}
-	}
-}
-
-func TestRedirectDeleteExisting(t *testing.T) {
-	t.Parallel()
-
-	const (
-		code  = "code"
-		token = "token"
-	)
-
-	for _, ri := range routerImplementations {
-		ri := ri // pin
-
-		t.Run(ri.name, func(t *testing.T) {
-			t.Parallel()
-
-			repository, close, err := memory.New(context.Background(), "")
-			if assert.NoError(t, err) {
-				defer close()
-
-				err = repository.Store(adder.RedirectStorage{
-					Code:  code,
-					Token: token,
-				})
-
-				if assert.NoError(t, err) {
-					deleterService := deleter.New(discardingLogger, repository)
-
-					router := ri.new(discardingLogger, "", nil, nil, nil, deleterService)
-
-					request := httptest.NewRequest("DELETE", "/"+code+"/"+token, nil)
-
-					responseRecorder := httptest.NewRecorder()
-					router.ServeHTTP(responseRecorder, request)
-
-					assert.Equal(t, http.StatusNoContent, responseRecorder.Result().StatusCode)
+							if assert.Equal(t, http.StatusTemporaryRedirect, responseRecorder.Result().StatusCode) {
+								assert.Equal(t, url, responseRecorder.Result().Header.Get("location"))
+							}
+						}
+					}
 				}
 			}
+		}
+	})
+}
+
+func TestV1InvalidateNonExisting(t *testing.T) {
+	const (
+		code  = "code"
+		token = "token"
+	)
+	matrix(t, func(t *testing.T, router http.Handler, repository repository.RedirectRepository) {
+		request := httptest.NewRequest(http.MethodDelete, v1UrlForCodeAndToken(code, token), nil)
+		responseRecorder := httptest.NewRecorder()
+		router.ServeHTTP(responseRecorder, request)
+
+		assert.Equal(t, http.StatusNotFound, responseRecorder.Result().StatusCode)
+	})
+}
+
+func TestV1InvalidateExisting(t *testing.T) {
+	const (
+		code  = "code"
+		token = "token"
+	)
+	matrix(t, func(t *testing.T, router http.Handler, repository repository.RedirectRepository) {
+		err := repository.Store(adder.RedirectStorage{
+			Code:  code,
+			Token: token,
 		})
-	}
+
+		if assert.NoError(t, err) {
+			request := httptest.NewRequest(http.MethodDelete, v1UrlForCodeAndToken(code, token), nil)
+			responseRecorder := httptest.NewRecorder()
+			router.ServeHTTP(responseRecorder, request)
+
+			assert.Equal(t, http.StatusNoContent, responseRecorder.Result().StatusCode)
+		}
+	})
 }

@@ -3,9 +3,8 @@ package memory
 import (
 	"context"
 	"errors"
-	"fmt"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"hex-microservice/repository"
 	"sync"
@@ -26,22 +25,34 @@ func New(_ context.Context, _ string) (repository.RedirectRepository, repository
 }
 
 // findByCode resolves a redirect by it's code.
-func (r *memoryRepository) findByCode(code string) (redirect, error) {
+func (r *memoryRepository) findActiveByCode(code string) (redirect, error) {
 	r.m.RLock()
 	red, ok := r.memory[code]
 	r.m.RUnlock()
 
-	if !ok {
+	if !ok || !red.Active {
 		return red, errNotFound
 	}
 
 	return red, nil
 }
 
-func (r *memoryRepository) LookupFind(code string) (lookup.RedirectStorage, error) {
+func (r *memoryRepository) findActiveByCodeAndToken(code, token string) (redirect, error) {
+	r.m.RLock()
+	red, ok := r.memory[code]
+	r.m.RUnlock()
+
+	if !ok || !red.Active || red.Token != token {
+		return red, errNotFound
+	}
+
+	return red, nil
+}
+
+func (r *memoryRepository) Lookup(code string) (lookup.RedirectStorage, error) {
 	var red lookup.RedirectStorage
 
-	stored, err := r.findByCode(code)
+	stored, err := r.findActiveByCode(code)
 	if err != nil {
 		if errors.Is(err, errNotFound) {
 			return red, lookup.ErrNotFound
@@ -62,43 +73,31 @@ func (r *memoryRepository) Store(red adder.RedirectStorage) error {
 		return adder.ErrDuplicate
 	}
 
+	store := fromAdderRedirectStorageToRedirect(red)
+	store.Active = true
+
 	r.m.Lock()
-	r.memory[red.Code] = fromAdderRedirectStorageToRedirect(red)
+	r.memory[red.Code] = store
 	r.m.Unlock()
 
 	return nil
 }
 
-func (r *memoryRepository) Delete(code, token string) error {
-	r.m.RLock()
-	red, ok := r.memory[code]
-	r.m.RUnlock()
-	if !ok {
-		return deleter.ErrNotFound
-	}
-
-	if red.Token != token {
-		return fmt.Errorf("invalid token: %w", deleter.ErrNotFound)
-	}
-
-	r.m.Lock()
-	delete(r.memory, code)
-	r.m.Unlock()
-
-	return nil
-}
-
-func (r *memoryRepository) DeleteFind(code string) (deleter.RedirectStorage, error) {
-	var red deleter.RedirectStorage
-
-	stored, err := r.findByCode(code)
+func (r *memoryRepository) Invalidate(code, token string) error {
+	store, err := r.findActiveByCodeAndToken(code, token)
 	if err != nil {
 		if errors.Is(err, errNotFound) {
-			return red, deleter.ErrNotFound
+			return invalidator.ErrNotFound
 		}
 
-		return red, err
+		return err
 	}
 
-	return fromRedirectToDeleterRedirectStorage(stored), nil
+	store.Active = false
+
+	r.m.Lock()
+	r.memory[store.Code] = store
+	r.m.Unlock()
+
+	return nil
 }

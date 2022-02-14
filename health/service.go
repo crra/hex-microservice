@@ -30,6 +30,6 @@ func (s *service) Health(now time.Time) HealthResult {
 	return HealthResult{
 		Name:    s.name,
 		Version: s.version,
-		Uptime:  now.Sub(s.startupTime),
+		Uptime:  now.Sub(s.startupTime).Round(time.Second),
 	}
 }

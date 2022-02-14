@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hex-microservice/adder"
+	"hex-microservice/meta/value"
 	"io/ioutil"
 	"net/http"
 	"reflect"
@@ -12,8 +13,16 @@ import (
 	validate "gopkg.in/dealancer/validate.v2"
 )
 
+// redirectRequest is the redirect that is requested by the client.
+type redirectRequest struct {
+	// mandatory
+	URL string `json:"url" msgpack:"url"  validate:"empty=false & format=url"`
+	// optional
+	CustomCode string `json:"custom_code" msgpack:"custom_code"  validate:"empty=true | gte=5 & lte=25"`
+}
+
 // RedirectPost implements the "post" verb of the REST context that creates a new redirect.
-func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
+func (h *handler) RedirectPost(mappingUrl, servicePath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -78,6 +87,14 @@ func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 				ClientInfo: getIP(r),
 			})
 		if err != nil {
+			if red.CustomCode != "" && errors.Is(err, adder.ErrDuplicate) {
+				writeApiError(w, h.log, ApiError{
+					StatusCode: http.StatusConflict,
+					Title:      fmt.Sprintf(customCodeAlreadyTaken, red.CustomCode),
+				})
+				return
+			}
+
 			h.log.Error(err, "error adding request", "request", red)
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
@@ -89,12 +106,12 @@ func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 			URL:  red.URL,
 			Links: []link{
 				{
-					Href: strings.Join([]string{mappingUrl, results[0].Code}, "/"),
+					Href: value.Join("/", mappingUrl, v1Prefix, servicePath, results[0].Code),
 					Rel:  resourceName,
 					T:    http.MethodGet,
 				},
 				{
-					Href: strings.Join([]string{mappingUrl, results[0].Code, results[0].Token}, "/"),
+					Href: strings.Join([]string{mappingUrl, servicePath, results[0].Code, results[0].Token}, "/"),
 					Rel:  resourceName,
 					T:    http.MethodDelete,
 				},

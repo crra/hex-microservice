@@ -10,7 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"hex-microservice/repository"
 	"strings"
@@ -76,7 +76,7 @@ func New(parent context.Context, url string) (repository.RedirectRepository, rep
 }
 
 // LookupFind is the implementation for repository.RedirectRepository#LookupFind.
-func (s *sqliteRepository) LookupFind(code string) (lookup.RedirectStorage, error) {
+func (s *sqliteRepository) Lookup(code string) (lookup.RedirectStorage, error) {
 	var red lookup.RedirectStorage
 
 	row := s.db.QueryRow(fmt.Sprintf(`
@@ -84,8 +84,8 @@ func (s *sqliteRepository) LookupFind(code string) (lookup.RedirectStorage, erro
 		code, url, created_at
 	FROM '%s'
 	WHERE
-		code = ?
-	`, tableName), code)
+		code = ? AND active = ?
+	`, tableName), code, true)
 
 	var createdAt string
 	if err := row.Scan(&red.Code, &red.URL, &createdAt); err != nil {
@@ -110,10 +110,10 @@ func (s *sqliteRepository) LookupFind(code string) (lookup.RedirectStorage, erro
 func (s *sqliteRepository) Store(red adder.RedirectStorage) error {
 	if _, err := s.db.Exec(fmt.Sprintf(`
 	INSERT INTO '%s'
-		(code, url, token, client_info, created_at)
+		(code, active, url, token, client_info, created_at)
 	VALUES
-		(?, ?, ?, ?, ?)
-	`, tableName), red.Code, red.URL, red.Token, red.ClientInfo, red.CreatedAt.Format(time.RFC3339)); err != nil {
+		(?, ?, ?, ?, ?, ?)
+	`, tableName), red.Code, 1, red.URL, red.Token, red.ClientInfo, red.CreatedAt.Format(time.RFC3339)); err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) {
 			if errors.Is(sqliteErr.ExtendedCode, sqlite3.ErrConstraintPrimaryKey) {
@@ -126,6 +126,31 @@ func (s *sqliteRepository) Store(red adder.RedirectStorage) error {
 	return nil
 }
 
+func (r *sqliteRepository) Invalidate(code, token string) error {
+	result, err := r.db.Exec(fmt.Sprintf(`
+	UPDATE '%s'
+	SET
+		active = ?
+	WHERE
+		code = ? AND token = ?
+	`, tableName), 0, code, token)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return invalidator.ErrNotFound
+	}
+
+	return nil
+}
+
+/*
 func (r *sqliteRepository) Delete(code, token string) error {
 	result, err := r.db.Exec(fmt.Sprintf(`
 	DELETE
@@ -148,25 +173,4 @@ func (r *sqliteRepository) Delete(code, token string) error {
 
 	return err
 }
-
-func (s *sqliteRepository) DeleteFind(code string) (deleter.RedirectStorage, error) {
-	var red deleter.RedirectStorage
-
-	row := s.db.QueryRow(fmt.Sprintf(`
-	SELECT
-		code, token
-  FROM '%s'
-	WHERE
-		code = ?
-	`, tableName), code)
-
-	if err := row.Scan(&red.Code, &red.Token); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return red, lookup.ErrNotFound
-		}
-
-		return red, err
-	}
-
-	return red, nil
-}
+*/

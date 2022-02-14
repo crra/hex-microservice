@@ -2,12 +2,17 @@ package value
 
 import (
 	"reflect"
+	"strings"
 
 	"github.com/fatih/structtag"
 )
 
 func Ident[K comparable](key K) K {
 	return key
+}
+
+func Join(sep string, elements ...string) string {
+	return strings.Join(elements, sep)
 }
 
 // GetFromMap returns an associated value by a given key from a map. In case of key errors (e.g. not found)
@@ -50,6 +55,16 @@ func FirstKeyByValue[K, V comparable](m map[K]V, val V) (K, bool) {
 	// Default
 	var d K
 	return d, false
+}
+
+func FirstValueFromSlice[E any](elements []E, fn func(E) bool) *E {
+	for _, e := range elements {
+		if fn(e) {
+			return &e
+		}
+	}
+
+	return nil
 }
 
 // FirstByValue similar to sort.Search but no need to use a closure or

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"hex-microservice/meta/value"
 	"hex-microservice/typeconverter/parser"
@@ -47,8 +47,8 @@ func typeConverters(f afero.Fs) ([]converter, error) {
 
 	for _, c := range []config{
 		configForPackage(repositoryTemplate, "repository", "memory"),
-		configForPackage(repositoryTemplate, "repository", "redis"),
-		configForPackage(repositoryTemplate, "repository", "mongo"),
+		// configForPackage(repositoryTemplate, "repository", "redis"),
+		// configForPackage(repositoryTemplate, "repository", "mongo"),
 		// NOTE: "sqlite" performed the mapping manually
 		configForPackage(repositoryTemplate, "repository", "gormsqlite"),
 
@@ -120,9 +120,9 @@ func repositoryTemplate(c config, r parser.ParseResult) any {
 				Fields: fields(
 					value.Must(fieldNamesFromParseResults(r, fromTypeName)),
 					// TODO: find a way to infer the type from string
-					value.Must(fieldNameFromType(reflect.TypeOf(&deleter.RedirectStorage{}))),
+					value.Must(fieldNameFromType(reflect.TypeOf(&invalidator.RedirectStorage{}))),
 				),
 			}
-		}("redirect", "deleter.RedirectStorage"),
+		}("redirect", "invalidator.RedirectStorage"),
 	}
 }

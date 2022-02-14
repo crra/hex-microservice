@@ -1,8 +1,7 @@
-package deleter
+package invalidator
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/go-logr/logr"
 )
@@ -13,15 +12,14 @@ var ErrNotFound = errors.New("redirect not found")
 // Repository defines the method the service expects from
 // a repository implementation.
 type Repository interface {
-	DeleteFind(code string) (RedirectStorage, error)
-	Delete(code, token string) error
+	Invalidate(code, token string) error
 }
 
 // Service describes the method the service offers.
 type Service interface {
 	// Lookup takes a token to deletes a Redirect.
 	// Raises an error if the entry couldn't be deleted.
-	Delete(q RedirectQuery) error
+	Invalidate(q RedirectQuery) error
 }
 
 // service implements the Service interface and holds
@@ -39,18 +37,9 @@ func New(l logr.Logger, r Repository) Service {
 	}
 }
 
-// Delete deletes a redirect by the given token.
-func (s *service) Delete(q RedirectQuery) error {
-	stored, err := s.repository.DeleteFind(q.Code)
-	if err != nil {
-		return err
-	}
-
-	if q.Token != stored.Token {
-		return fmt.Errorf("invalid token: %w", ErrNotFound)
-	}
-
-	if err := s.repository.Delete(q.Code, q.Token); err != nil {
+// Invalidate deletes a redirect by the given token.
+func (s *service) Invalidate(q RedirectQuery) error {
+	if err := s.repository.Invalidate(q.Code, q.Token); err != nil {
 		return err
 	}
 

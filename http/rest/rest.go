@@ -3,8 +3,8 @@ package rest
 import (
 	"encoding/json"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
 	"hex-microservice/health"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"net/http"
 	"time"
@@ -18,6 +18,8 @@ const (
 	UrlParameterCode  = "code"
 	UrlParameterToken = "token"
 
+	v1Prefix = "v1"
+
 	contentTypeMessagePack = "application/x-msgpack"
 	contentTypeJson        = "application/json"
 
@@ -26,32 +28,25 @@ const (
 	titleEmptyBody             = "Error processing request body, the content is empty"
 	titleProcessingFieldFormat = "Error processing field: '%s'"
 	missingParameterFormat     = "Error missing parameter: '%s'"
+	customCodeAlreadyTaken     = "Error code already taken: '%s'"
 )
 
 type ParamFn func(r *http.Request, key string) string
 
-type Handler interface {
+type HandlerV1 interface {
 	Health(now time.Time) http.HandlerFunc
 	RedirectGet(mappingUrl string) http.HandlerFunc
-	RedirectPost(mappingUrl string) http.HandlerFunc
-	RedirectDelete(mappingUrl string) http.HandlerFunc
+	RedirectPost(mappingUrl, servicePrefix string) http.HandlerFunc
+	RedirectInvalidate(mappingUrl string) http.HandlerFunc
 }
 
 type GinHandler interface {
-	Health() gin.HandlerFunc
+	Health(now time.Time) gin.HandlerFunc
 }
 
 type converter struct {
 	unmarshal func([]byte, any) error
 	marshal   func(any) ([]byte, error)
-}
-
-// redirectRequest is the redirect that is requested by the client.
-type redirectRequest struct {
-	// mandatory
-	URL string `json:"url" msgpack:"url"  validate:"empty=false & format=url"`
-	// optional
-	CustomCode string `json:"custom_code" msgpack:"custom_code"  validate:"empty=true | gte=5 & lte=25"`
 }
 
 type link struct {
@@ -72,24 +67,23 @@ type redirectResponse struct {
 type handler struct {
 	log     logr.Logger
 	paramFn ParamFn
-
 	// services
-	adder      adder.Service
-	lookup     lookup.Service
-	deleter    deleter.Service
-	health     health.Service
-	converters map[string]converter
+	adder       adder.Service
+	lookup      lookup.Service
+	invalidator invalidator.Service
+	health      health.Service
+	converters  map[string]converter
 }
 
 type ginhandler struct {
 	log logr.Logger
 
 	// services
-	adder      adder.Service
-	lookup     lookup.Service
-	deleter    deleter.Service
-	health     health.Service
-	converters map[string]converter
+	adder       adder.Service
+	lookup      lookup.Service
+	invalidator invalidator.Service
+	health      health.Service
+	converters  map[string]converter
 }
 
 type ApiError struct {
@@ -97,14 +91,15 @@ type ApiError struct {
 	Title      string `json:"title"`
 }
 
-func New(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) Handler {
+func NewV1(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, invalidator invalidator.Service, paramFn ParamFn) HandlerV1 {
 	return &handler{
 		log:     log,
 		paramFn: paramFn,
-		health:  health,
-		adder:   adder,
-		lookup:  lookup,
-		deleter: deleter,
+
+		health:      health,
+		adder:       adder,
+		lookup:      lookup,
+		invalidator: invalidator,
 		// NOTE: not really sure if this is a good pattern with the lookup table,
 		// but it was taken from the original example.
 		converters: map[string]converter{
@@ -114,13 +109,14 @@ func New(log logr.Logger, health health.Service, adder adder.Service, lookup loo
 	}
 }
 
-func NewGin(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) GinHandler {
+func NewGinV1(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, invalidator invalidator.Service, paramFn ParamFn) GinHandler {
 	return &ginhandler{
-		log:     log,
-		health:  health,
-		adder:   adder,
-		lookup:  lookup,
-		deleter: deleter,
+		log: log,
+
+		health:      health,
+		adder:       adder,
+		lookup:      lookup,
+		invalidator: invalidator,
 		// NOTE: not really sure if this is a good pattern with the lookup table,
 		// but it was taken from the original example.
 		converters: map[string]converter{

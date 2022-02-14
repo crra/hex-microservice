@@ -10,20 +10,22 @@ import (
 	"errors"
 	"fmt"
 	"hex-microservice/adder"
-	"hex-microservice/cmd/service/chirouter"
-	"hex-microservice/cmd/service/ginrouter"
-	"hex-microservice/cmd/service/gorouter"
-	"hex-microservice/cmd/service/httprouter"
-	"hex-microservice/cmd/service/muxrouter"
 	"hex-microservice/customcontext"
-	"hex-microservice/deleter"
 	"hex-microservice/health"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"hex-microservice/meta/value"
 	"hex-microservice/repository"
 	"hex-microservice/repository/memory"
-	"hex-microservice/repository/mongo"
-	"hex-microservice/repository/redis"
+	"hex-microservice/router"
+	"hex-microservice/router/chi"
+	"hex-microservice/router/gin"
+	"hex-microservice/router/gorillamux"
+	"hex-microservice/router/gorouter"
+	"hex-microservice/router/httprouter"
+
+	//"hex-microservice/repository/mongo"
+	//"hex-microservice/repository/redis"
 	"hex-microservice/repository/sqlite"
 	"log"
 	"net/http"
@@ -49,6 +51,9 @@ var (
 const (
 	defaultBind           = "localhost:8000"
 	defaultMapped         = "http://" + defaultBind
+	v1Path                = "v1"
+	defaultServicePath    = "/service"
+	defaultHealthPath     = "/health"
 	defaultRepositoryArgs = ""
 
 	// considder: https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
@@ -60,10 +65,12 @@ const (
 
 // used configuration keys
 const (
-	configKeyBind       = "bind"
-	configKeyMapped     = "mapped"
-	configKeyRouter     = "router"
-	configKeyRepository = "repository"
+	configKeyBind        = "bind"
+	configKeyMapped      = "mapped"
+	configKeyServicePath = "service"
+	configKeyHealthPath  = "health"
+	configKeyRouter      = "router"
+	configKeyRepository  = "repository"
 )
 
 var (
@@ -74,18 +81,22 @@ var (
 )
 
 // repositoryImpl represents a repository implementation that can be instantiated.
+type newRepositoryFn func(context.Context, string) (repository.RedirectRepository, repository.Close, error)
+
 type repositoryImpl struct {
 	name string
-	new  func(context.Context, string) (repository.RedirectRepository, repository.Close, error)
+	new  newRepositoryFn
 }
 
 // String returns the string representation of the routerImpl.
 func (r routerImpl) String() string { return r.name }
 
+type newRouterFn func(log logr.Logger, mappedURL string) router.Router
+
 // repositoryImpl represents a router implementation that can be instantiated.
 type routerImpl struct {
 	name string
-	new  func(logr.Logger, string, health.Service, adder.Service, lookup.Service, deleter.Service) http.Handler
+	new  newRouterFn
 }
 
 // String returns the string representation of the repositoryImpl.
@@ -94,17 +105,17 @@ func (r repositoryImpl) String() string { return r.name }
 // available router implementations
 var routerImplementations = []routerImpl{
 	{"go", gorouter.New},
-	{"chi", chirouter.New},
-	{"gorilla", muxrouter.New},
+	{"chi", chi.New},
+	{"gorilla", gorillamux.New},
 	{"httprouter", httprouter.New},
-	{"gin", ginrouter.New},
+	{"gin", gin.New},
 }
 
 // available repository implementations
 var repositoryImplementations = []repositoryImpl{
 	{"memory", memory.New},
-	{"redis", redis.New},
-	{"mongodb", mongo.New},
+	//{"redis", redis.New},
+	//{"mongodb", mongo.New},
 	{"sqlite", sqlite.New},
 }
 
@@ -112,6 +123,8 @@ var repositoryImplementations = []repositoryImpl{
 type configuration struct {
 	Bind           string
 	Mapped         string
+	ServicePath    string
+	HealthPath     string
 	Router         routerImpl
 	Repository     repositoryImpl
 	RepositoryArgs string
@@ -129,6 +142,8 @@ func getConfiguration(log logr.Logger) (*configuration, error) {
 
 	v.SetDefault(configKeyBind, defaultBind)
 	v.SetDefault(configKeyMapped, defaultMapped)
+	v.SetDefault(configKeyServicePath, defaultServicePath)
+	v.SetDefault(configKeyHealthPath, defaultHealthPath)
 	v.SetDefault(configKeyRepository, defaultRepository.String())
 	v.SetDefault(configKeyRouter, defaultRouter.String())
 
@@ -163,6 +178,8 @@ func getConfiguration(log logr.Logger) (*configuration, error) {
 	return &configuration{
 		Bind:           v.GetString(configKeyBind),
 		Mapped:         v.GetString(configKeyMapped),
+		ServicePath:    v.GetString(configKeyServicePath),
+		HealthPath:     v.GetString(configKeyHealthPath),
 		Router:         router,
 		Repository:     repository,
 		RepositoryArgs: repositoryArgs,
@@ -186,15 +203,18 @@ func run(parent context.Context, log logr.Logger) error {
 
 	defer close()
 
-	// the service is the domain core
-	lookupService := lookup.New(log, repository)
-	adderService := adder.New(log, repository)
-	deleteService := deleter.New(log, repository)
-	healthService := health.New(name, version, time.Now())
-
 	// initialize the configured router
 	// use a factory function (new) of the supported type
-	router := c.Router.new(log, c.Mapped, healthService, adderService, lookupService, deleteService)
+	router := c.Router.new(log, c.Mapped)
+	router.MountV1(
+		v1Path,
+		c.HealthPath,
+		health.New(name, version, time.Now()),
+		c.ServicePath,
+		adder.New(log, repository),
+		lookup.New(log, repository),
+		invalidator.New(log, repository),
+	)
 
 	// use the built-in http server
 	server := &http.Server{
