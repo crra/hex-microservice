@@ -52,6 +52,16 @@ func FirstKeyByValue[K, V comparable](m map[K]V, val V) (K, bool) {
 	return d, false
 }
 
+func FirstValueFromSlice[E any](elements []E, fn func(E) bool) *E {
+	for _, e := range elements {
+		if fn(e) {
+			return &e
+		}
+	}
+
+	return nil
+}
+
 // FirstByValue similar to sort.Search but no need to use a closure or
 // use the index in a closure or return value.
 func FirstByValue[V comparable](m []V, val V) (V, bool) {

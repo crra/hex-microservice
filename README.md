@@ -4,7 +4,7 @@ This repository contains a very simple example project to explore the applicatio
 
 Tries to give an answer if in an example code one can find: "error handling omitted for simplicity".
 
-The service represents a very simple URL shortener service. Offers basic CRD (create, read, delete) operations via REST.
+The service represents a very simple URL shortener service. Offers basic CRD (create, read, delet/invalidate) operations via REST.
 
 Based on the series from [tensor-programming](https://github.com/tensor-programming/hex-microservice.git) and recommendations from:
 
@@ -24,6 +24,7 @@ This repository is intended for educational purposed. By advocating a certain ar
   - chi: [chi router](github.com/go-chi/chi/v5)
   - httprouter: [httprouter](github.com/julienschmidt/httprouter)
   - gorilla: [gorilla/mux](github.com/gorilla/mux)
+  - gin: [gin](https://github.com/gin-gonic/gin) uses an alternative implementation for `http/rest` due to the different method signatures of the handlerFunc
 - the _repository_, specifies the dsn (Data Source Name)
   - memory: a simple map based implementation with locking
   - sqlite: [sqlite3](github.com/mattn/go-sqlite3)
@@ -136,11 +137,8 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 
 - implement and test mongo backend
 - implement the code generator that creates the conversion code that performs the conversion without runtime inspection (reflection)
-- compare this custom golang lib version (this) with an existing framework like spring boot (e.g. input validation)
-- handle key collisions
 - dockerize (also for macOS)
 - docker-compose with different storage backends
-- custom short ids
 - time to live (ttl)
 - top10 (update on read)
 - internal event sourcing to simulate Command and Query Responsibility Segregation (CQRS)?

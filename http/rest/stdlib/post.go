@@ -1,4 +1,4 @@
-package rest
+package stdlib
 
 import (
 	"errors"
@@ -7,23 +7,30 @@ import (
 	"io/ioutil"
 	"net/http"
 	"reflect"
-	"strings"
 
 	validate "gopkg.in/dealancer/validate.v2"
 )
+
+// redirectRequest is the redirect that is requested by the client.
+type redirectRequest struct {
+	// mandatory
+	URL string `json:"url" msgpack:"url"  validate:"empty=false & format=url"`
+	// optional
+	CustomCode string `json:"custom_code" msgpack:"custom_code" validate:"empty=true | gte=5 & lte=25"`
+}
 
 // RedirectPost implements the "post" verb of the REST context that creates a new redirect.
 func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			h.log.Error(err, "reading document body")
 			return
 		}
 
 		// Converter for different content types
-		contentType := r.Header.Get("Content-Type")
+		contentType := r.Header.Get(headerFieldContentType)
 		converter, ok := h.converters[contentType]
 		if !ok {
 			h.log.Error(nil, "unsupported content type", "contentType", contentType)
@@ -74,28 +81,38 @@ func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 		results, err := h.adder.Add(
 			adder.RedirectCommand{
 				URL:        red.URL,
+				CustomCode: red.CustomCode,
 				ClientInfo: getIP(r),
 			})
 		if err != nil {
+			if red.CustomCode != "" && errors.Is(err, adder.ErrDuplicate) {
+				writeApiError(w, h.log, ApiError{
+					StatusCode: http.StatusConflict,
+					Title:      fmt.Sprintf(customCodeAlreadyTaken, red.CustomCode),
+				})
+				return
+			}
+
 			h.log.Error(err, "error adding request", "request", red)
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			return
 		}
 
-		// response to client
+		// response to client}
+		result := results[0]
 		asResponse := redirectResponse{
-			Code: results[0].Code,
+			Code: result.Code,
 			URL:  red.URL,
 			Links: []link{
 				{
-					Href: strings.Join([]string{mappingUrl, results[0].Code}, "/"),
+					Href: urlForCode(mappingUrl, result.Code),
 					Rel:  resourceName,
-					T:    "GET",
+					T:    http.MethodGet,
 				},
 				{
-					Href: strings.Join([]string{mappingUrl, results[0].Code, results[0].Token}, "/"),
+					Href: urlForCodeAndToken(mappingUrl, result.Code, result.Token),
 					Rel:  resourceName,
-					T:    "DELETE",
+					T:    http.MethodDelete,
 				},
 			},
 		}

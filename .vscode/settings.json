@@ -9,11 +9,18 @@
   },
   "cSpell.words": [
     "bson",
+    "ginv",
+    "gonic",
     "gorm",
     "gormsqlite",
+    "gorouter",
     "iofs",
     "jinzhu",
     "logr",
-    "mattn"
+    "mattn",
+    "restv",
+    "stdr",
+    "stretchr",
+    "vmihailenco"
   ]
 }

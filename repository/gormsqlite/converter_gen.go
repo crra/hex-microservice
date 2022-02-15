@@ -2,7 +2,7 @@ package gormsqlite
 
 import (
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 )
 
@@ -25,8 +25,8 @@ func fromAdderRedirectStorageToRedirect(i adder.RedirectStorage) redirect {
 	}
 }
 
-func fromRedirectToDeleterRedirectStorage(i redirect) deleter.RedirectStorage {
-	return deleter.RedirectStorage{
+func fromRedirectToInvalidatorRedirectStorage(i redirect) invalidator.RedirectStorage {
+	return invalidator.RedirectStorage{
 		Code:  i.Code,
 		Token: i.Token,
 	}

@@ -1,12 +1,14 @@
-package rest
+package stdlib
 
 import (
 	"encoding/json"
 	"hex-microservice/adder"
-	"hex-microservice/deleter"
 	"hex-microservice/health"
+	"hex-microservice/http/url"
+	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"net/http"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/vmihailenco/msgpack"
@@ -16,6 +18,8 @@ const (
 	UrlParameterCode  = "code"
 	UrlParameterToken = "token"
 
+	headerFieldContentType = "content-type"
+
 	contentTypeMessagePack = "application/x-msgpack"
 	contentTypeJson        = "application/json"
 
@@ -24,28 +28,21 @@ const (
 	titleEmptyBody             = "Error processing request body, the content is empty"
 	titleProcessingFieldFormat = "Error processing field: '%s'"
 	missingParameterFormat     = "Error missing parameter: '%s'"
+	customCodeAlreadyTaken     = "Error code already taken: '%s'"
 )
 
 type ParamFn func(r *http.Request, key string) string
 
 type Handler interface {
-	Health() http.HandlerFunc
+	Health(now time.Time) http.HandlerFunc
 	RedirectGet(mappingUrl string) http.HandlerFunc
 	RedirectPost(mappingUrl string) http.HandlerFunc
-	RedirectDelete(mappingUrl string) http.HandlerFunc
+	RedirectInvalidate(mappingUrl string) http.HandlerFunc
 }
 
 type converter struct {
 	unmarshal func([]byte, any) error
 	marshal   func(any) ([]byte, error)
-}
-
-// redirectRequest is the redirect that is requested by the client.
-type redirectRequest struct {
-	// mandatory
-	URL string `json:"url" msgpack:"url"  validate:"empty=false & format=url"`
-	// optional
-	CustomCode string `json:"custom_code" msgpack:"custom_code"  validate:"empty=true | gte=5 & lte=25"`
 }
 
 type link struct {
@@ -66,13 +63,12 @@ type redirectResponse struct {
 type handler struct {
 	log     logr.Logger
 	paramFn ParamFn
-
 	// services
-	adder      adder.Service
-	lookup     lookup.Service
-	deleter    deleter.Service
-	health     health.Service
-	converters map[string]converter
+	adder       adder.Service
+	lookup      lookup.Service
+	invalidator invalidator.Service
+	health      health.Service
+	converters  map[string]converter
 }
 
 type ApiError struct {
@@ -80,14 +76,23 @@ type ApiError struct {
 	Title      string `json:"title"`
 }
 
-func New(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, deleter deleter.Service, paramFn ParamFn) Handler {
+func urlForCode(mappedUrl, code string) string {
+	return url.Join(mappedUrl, code)
+}
+
+func urlForCodeAndToken(mappedUrl, code, token string) string {
+	return url.Join(mappedUrl, code, token)
+}
+
+func New(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, invalidator invalidator.Service, paramFn ParamFn) Handler {
 	return &handler{
 		log:     log,
 		paramFn: paramFn,
-		health:  health,
-		adder:   adder,
-		lookup:  lookup,
-		deleter: deleter,
+
+		health:      health,
+		adder:       adder,
+		lookup:      lookup,
+		invalidator: invalidator,
 		// NOTE: not really sure if this is a good pattern with the lookup table,
 		// but it was taken from the original example.
 		converters: map[string]converter{
@@ -99,7 +104,7 @@ func New(log logr.Logger, health health.Service, adder adder.Service, lookup loo
 
 // writeResponse is a helper function that write the necessary data to the response.
 func writeResponse(w http.ResponseWriter, contentType string, body []byte, statusCode int) error {
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set(headerFieldContentType, contentType)
 	w.WriteHeader(statusCode)
 
 	_, err := w.Write(body)
@@ -116,7 +121,7 @@ func writeApiError(w http.ResponseWriter, log logr.Logger, apiErr ApiError) {
 		return
 	}
 
-	w.Header().Set("Content-Type", contentTypeJson)
+	w.Header().Set(headerFieldContentType, contentTypeJson)
 	http.Error(w, string(errReturn), apiErr.StatusCode)
 	return
 }

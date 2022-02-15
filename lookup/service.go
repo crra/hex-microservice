@@ -13,7 +13,7 @@ var ErrNotFound = errors.New("redirect not found")
 // Repository defines the method the service expects from
 // a repository implementation.
 type Repository interface {
-	LookupFind(code string) (RedirectStorage, error)
+	Lookup(code string) (RedirectStorage, error)
 }
 
 // Service describes the method the service offers.
@@ -41,7 +41,7 @@ func New(l logr.Logger, r Repository) Service {
 // Lookup resolves a given code to a redirect
 func (s *service) Lookup(q RedirectQuery) (RedirectResult, error) {
 	var r RedirectResult
-	stored, err := s.repository.LookupFind(q.Code)
+	stored, err := s.repository.Lookup(q.Code)
 	if err != nil {
 		return r, err
 	}

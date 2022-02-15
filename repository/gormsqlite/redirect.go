@@ -6,6 +6,7 @@ import (
 
 type redirect struct {
 	Code      string `gorm:"primary_key"`
+	Active    bool
 	Token     string
 	URL       string
 	CreatedAt time.Time
