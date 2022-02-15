@@ -36,10 +36,16 @@ It can be configured either by a `shortener.env` file or by setting the environm
 
 ## Examples
 
+Memory backed (great for testing):
+
+```
+repository=memory
+```
+
 Plain sqlite repository:
 
 ```
-repository=gormsqlite://file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true
+repository=sqlite://file::memory:?cache=shared&_journal_mode=WAL&_foreign_keys=true
 ```
 
 Gorm (ORM) + an sqlite repository:
