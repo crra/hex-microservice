@@ -3,11 +3,10 @@ package gorillamux
 import (
 	"hex-microservice/adder"
 	"hex-microservice/health"
-	"hex-microservice/http/rest"
+	"hex-microservice/http/rest/stdlib"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
-	"hex-microservice/meta/value"
-	"hex-microservice/router"
 	"net/http"
 	"time"
 
@@ -16,53 +15,44 @@ import (
 	org "github.com/gorilla/mux"
 )
 
-type mux struct {
-	log       logr.Logger
-	mappedURL string
-	router    *org.Router
-}
-
-func New(log logr.Logger, mappedURL string) router.Router {
-	r := org.NewRouter()
-	r.StrictSlash(true)
-	r.NotFoundHandler = http.NotFoundHandler()
-	r.MethodNotAllowedHandler = http.NotFoundHandler()
-
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.StripSlashes)
-
-	return &mux{
-		log:       log,
-		mappedURL: mappedURL,
-		router:    r,
-	}
+func paramFunc(r *http.Request, key string) string {
+	return org.Vars(r)[key]
 }
 
 func param(name string) string {
 	return "{" + name + "}"
 }
 
-func (m *mux) MountV1(v1Path string, healthPath string, h health.Service, servicePath string, a adder.Service, l lookup.Service, i invalidator.Service) {
-	service := rest.NewV1(m.log, h, a, l, i, func(r *http.Request, key string) string {
-		return org.Vars(r)[key]
-	})
+func New(log logr.Logger, mappedURL string, mappedPath string, healthPath string, hs health.Service, servicePath string, as adder.Service, ls lookup.Service, is invalidator.Service) http.Handler {
+	router := org.NewRouter()
+	router.StrictSlash(true)
+	router.NotFoundHandler = http.NotFoundHandler()
+	router.MethodNotAllowedHandler = http.NotFoundHandler()
 
-	m.router.HandleFunc("/"+value.Join("/", v1Path, healthPath),
-		service.Health(time.Now())).Methods("GET")
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
+	router.Use(middleware.Logger)
+	router.Use(middleware.Recoverer)
+	router.Use(middleware.StripSlashes)
 
-	m.router.HandleFunc("/"+value.Join("/", v1Path, servicePath, param(rest.UrlParameterCode)),
-		service.RedirectGet(m.mappedURL)).Methods(http.MethodGet)
+	serviceMappedUrl := url.Join(mappedURL, mappedPath, servicePath)
+	handler := stdlib.New(log, hs, as, ls, is, paramFunc)
 
-	m.router.HandleFunc("/"+value.Join("/", v1Path, servicePath),
-		service.RedirectPost(m.mappedURL, servicePath)).Methods(http.MethodPost)
+	router.HandleFunc(url.AbsPath(mappedPath, healthPath),
+		handler.Health(time.Now())).
+		Methods(http.MethodGet)
 
-	m.router.HandleFunc("/"+value.Join("/", v1Path, servicePath, param(rest.UrlParameterCode), param(rest.UrlParameterToken)),
-		service.RedirectInvalidate(m.mappedURL))
-}
+	router.HandleFunc(url.AbsPath(mappedPath, servicePath, param(stdlib.UrlParameterCode)),
+		handler.RedirectGet(serviceMappedUrl)).
+		Methods(http.MethodGet)
 
-func (m *mux) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	m.router.ServeHTTP(rw, r)
+	router.HandleFunc(url.AbsPath(mappedPath, servicePath),
+		handler.RedirectPost(serviceMappedUrl)).
+		Methods(http.MethodPost)
+
+	router.HandleFunc(url.AbsPath(mappedPath, servicePath, param(stdlib.UrlParameterCode), param(stdlib.UrlParameterToken)),
+		handler.RedirectInvalidate(serviceMappedUrl)).
+		Methods(http.MethodDelete)
+
+	return router
 }

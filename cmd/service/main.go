@@ -17,7 +17,6 @@ import (
 	"hex-microservice/meta/value"
 	"hex-microservice/repository"
 	"hex-microservice/repository/memory"
-	"hex-microservice/router"
 	"hex-microservice/router/chi"
 	"hex-microservice/router/gin"
 	"hex-microservice/router/gorillamux"
@@ -49,11 +48,12 @@ var (
 
 // default server values
 const (
-	defaultBind           = "localhost:8000"
-	defaultMapped         = "http://" + defaultBind
-	v1Path                = "v1"
-	defaultServicePath    = "/service"
-	defaultHealthPath     = "/health"
+	defaultBind       = "localhost:8000"
+	defaultMappedURL  = "http://" + defaultBind
+	defaultMappedPath = ""
+
+	defaultServicePath    = "service"
+	defaultHealthPath     = "health"
 	defaultRepositoryArgs = ""
 
 	// considder: https://blog.cloudflare.com/the-complete-guide-to-golang-net-http-timeouts/
@@ -66,7 +66,8 @@ const (
 // used configuration keys
 const (
 	configKeyBind        = "bind"
-	configKeyMapped      = "mapped"
+	configKeyMappedURL   = "mappedurl"
+	configKeyMappedPath  = "mappedpath"
 	configKeyServicePath = "service"
 	configKeyHealthPath  = "health"
 	configKeyRouter      = "router"
@@ -91,7 +92,7 @@ type repositoryImpl struct {
 // String returns the string representation of the routerImpl.
 func (r routerImpl) String() string { return r.name }
 
-type newRouterFn func(log logr.Logger, mappedURL string) router.Router
+type newRouterFn func(log logr.Logger, mappedURL string, mappedPath string, healthPath string, hs health.Service, servicePath string, as adder.Service, ls lookup.Service, is invalidator.Service) http.Handler
 
 // repositoryImpl represents a router implementation that can be instantiated.
 type routerImpl struct {
@@ -122,7 +123,8 @@ var repositoryImplementations = []repositoryImpl{
 // configuration describes the user defined configuration options.
 type configuration struct {
 	Bind           string
-	Mapped         string
+	MappedURL      string
+	MappedPath     string
 	ServicePath    string
 	HealthPath     string
 	Router         routerImpl
@@ -141,7 +143,8 @@ func getConfiguration(log logr.Logger) (*configuration, error) {
 	v.AutomaticEnv()
 
 	v.SetDefault(configKeyBind, defaultBind)
-	v.SetDefault(configKeyMapped, defaultMapped)
+	v.SetDefault(configKeyMappedURL, defaultMappedURL)
+	v.SetDefault(configKeyMappedPath, defaultMappedPath)
 	v.SetDefault(configKeyServicePath, defaultServicePath)
 	v.SetDefault(configKeyHealthPath, defaultHealthPath)
 	v.SetDefault(configKeyRepository, defaultRepository.String())
@@ -177,7 +180,8 @@ func getConfiguration(log logr.Logger) (*configuration, error) {
 
 	return &configuration{
 		Bind:           v.GetString(configKeyBind),
-		Mapped:         v.GetString(configKeyMapped),
+		MappedURL:      v.GetString(configKeyMappedURL),
+		MappedPath:     v.GetString(configKeyMappedPath),
 		ServicePath:    v.GetString(configKeyServicePath),
 		HealthPath:     v.GetString(configKeyHealthPath),
 		Router:         router,
@@ -205,11 +209,14 @@ func run(parent context.Context, log logr.Logger) error {
 
 	// initialize the configured router
 	// use a factory function (new) of the supported type
-	router := c.Router.new(log, c.Mapped)
-	router.MountV1(
-		v1Path,
+	router := c.Router.new(
+		log,
+		c.MappedURL,
+		c.MappedPath,
+
 		c.HealthPath,
 		health.New(name, version, time.Now()),
+
 		c.ServicePath,
 		adder.New(log, repository),
 		lookup.New(log, repository),

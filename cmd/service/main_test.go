@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hex-microservice/adder"
 	"hex-microservice/health"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"hex-microservice/meta/value"
@@ -20,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/go-logr/stdr"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,30 +38,40 @@ var testRepositories = []struct {
 }
 
 const (
+	headerFieldContentType = "content-type"
 	contentTypeMessagePack = "application/x-msgpack"
 	contentTypeJson        = "application/json"
 )
 
 const (
-	mappedUrl = "https://service.arpa"
+	mappedUrl   = "https://service.arpa"
+	mappedPath  = "_path_"
+	servicePath = "_service_"
+	healthPath  = "_health_"
 
 	healthTestName    = "name"
 	healthTestVersion = "version"
-	servicePath       = "_service_"
-	healthPath        = "_health_"
 )
 
 var (
-	v1HealthPrefix = value.Join("/", mappedUrl, v1Path, healthPath)
-	v1ServicePath  = value.Join("/", mappedUrl, v1Path, servicePath)
+	healthURL  = url.Join(mappedUrl, mappedPath, healthPath)
+	serviceURL = url.Join(mappedUrl, mappedPath, servicePath)
 )
+
+func urlForCode(code string) string {
+	return url.Join(mappedUrl, mappedPath, servicePath, code)
+}
+
+func urlForCodeAndToken(code, token string) string {
+	return url.Join(mappedUrl, mappedPath, servicePath, code, token)
+}
 
 var (
 	healthTestNow         = time.Now()
 	healthTestStartupTime = healthTestNow.Add(-1 * time.Minute)
 )
 
-type v1HealthResponse struct {
+type healthResponse struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Uptime  string `json:"uptime"`
@@ -71,27 +83,31 @@ type link struct {
 	T    string `json:"type"`
 }
 
-type v1CreateResponse struct {
+type createResponse struct {
 	Code  string `json:"code"`
 	URL   string `json:"url"`
 	Links []link `json:"_links"`
 }
 
 func matrix(t *testing.T, f func(*testing.T, http.Handler, repository.RedirectRepository)) {
+	gin.SetMode(gin.TestMode)
+
 	for _, routerImp := range routerImplementations {
 		routerImp := routerImp // pin
 
 		for _, repoImp := range testRepositories {
 			repoImp := repoImp // pin
 
-			t.Run(fmt.Sprintf("router:%s, repository:%s", routerImp.name, repoImp.name), func(t *testing.T) {
+			t.Run(fmt.Sprintf("router:%s,repository:%s", routerImp.name, repoImp.name), func(t *testing.T) {
 				repository, close, err := repoImp.new(context.Background(), repoImp.config)
 				if assert.NoError(t, err) {
 					defer close()
 
-					router := routerImp.new(discardingLogger, mappedUrl)
-					router.MountV1(
-						v1Path,
+					router := routerImp.new(
+						discardingLogger,
+						mappedUrl,
+						mappedPath,
+
 						healthPath,
 						health.New(healthTestName, healthTestVersion, healthTestStartupTime),
 
@@ -108,26 +124,18 @@ func matrix(t *testing.T, f func(*testing.T, http.Handler, repository.RedirectRe
 	}
 }
 
-func v1UrlForCode(code string) string {
-	return value.Join("/", mappedUrl, v1Path, servicePath, code)
-}
-
-func v1UrlForCodeAndToken(code, token string) string {
-	return value.Join("/", mappedUrl, v1Path, servicePath, code, token)
-}
-
-func TestV1Health(t *testing.T) {
+func TestHealth(t *testing.T) {
 	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
-		request := httptest.NewRequest(http.MethodGet, v1HealthPrefix, nil)
+		request := httptest.NewRequest(http.MethodGet, healthURL, nil)
 		responseRecorder := httptest.NewRecorder()
 		router.ServeHTTP(responseRecorder, request)
 
 		if assert.Equal(t, http.StatusOK, responseRecorder.Result().StatusCode) {
-			if assert.Contains(t, responseRecorder.Header().Get("content-type"), "application/json") {
-				response := &v1HealthResponse{}
+			if assert.Contains(t, responseRecorder.Header().Get(headerFieldContentType), contentTypeJson) {
+				response := &healthResponse{}
 				err := json.Unmarshal(responseRecorder.Body.Bytes(), response)
 				if assert.NoError(t, err) {
-					assert.Equal(t, &v1HealthResponse{
+					assert.Equal(t, &healthResponse{
 						Name:    healthTestName,
 						Version: healthTestVersion,
 						Uptime:  healthTestNow.Sub(healthTestStartupTime).Round(time.Second).String(),
@@ -138,11 +146,9 @@ func TestV1Health(t *testing.T) {
 	})
 }
 
-func TestV1RedirectGetRoot(t *testing.T) {
-	t.Parallel()
-
+func TestRedirectGetRoot(t *testing.T) {
 	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
-		request := httptest.NewRequest(http.MethodGet, v1ServicePath, nil)
+		request := httptest.NewRequest(http.MethodGet, serviceURL, nil)
 		responseRecorder := httptest.NewRecorder()
 		router.ServeHTTP(responseRecorder, request)
 
@@ -150,7 +156,7 @@ func TestV1RedirectGetRoot(t *testing.T) {
 	})
 }
 
-func TestV1RedirectGetExisting(t *testing.T) {
+func TestRedirectGetExisting(t *testing.T) {
 	const (
 		code  = "code"
 		token = "token"
@@ -164,7 +170,7 @@ func TestV1RedirectGetExisting(t *testing.T) {
 			URL:   url,
 		})
 		if assert.NoError(t, err) {
-			request := httptest.NewRequest(http.MethodGet, v1UrlForCode(code), nil)
+			request := httptest.NewRequest(http.MethodGet, urlForCode(code), nil)
 			responseRecorder := httptest.NewRecorder()
 			router.ServeHTTP(responseRecorder, request)
 
@@ -175,19 +181,59 @@ func TestV1RedirectGetExisting(t *testing.T) {
 	})
 }
 
-func TestV1RedirectAdd(t *testing.T) {
+func TestRedirectAdd(t *testing.T) {
+	const url = "https://example.com/"
+	const payload = `{ "url": "` + url + `" }`
+
+	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
+		request := httptest.NewRequest(http.MethodPost, serviceURL, strings.NewReader(payload))
+		request.Header.Set(headerFieldContentType, contentTypeJson)
+		responseRecorder := httptest.NewRecorder()
+		router.ServeHTTP(responseRecorder, request)
+
+		if assert.Equal(t, http.StatusCreated, responseRecorder.Result().StatusCode) {
+			response := &createResponse{}
+			err := json.Unmarshal(responseRecorder.Body.Bytes(), response)
+			if assert.NoError(t, err) {
+				assert.Equal(t, url, response.URL)
+
+				if assert.NotEmpty(t, response.Links) {
+					deleteUrl := value.FirstValueFromSlice(response.Links, func(l link) bool {
+						return l.T == http.MethodDelete
+					})
+					assert.NotNil(t, deleteUrl, "Delete URL missing")
+
+					getUrl := value.FirstValueFromSlice(response.Links, func(l link) bool {
+						return l.T == http.MethodGet
+					})
+					if assert.NotNil(t, getUrl, "Get URL missing") {
+						request := httptest.NewRequest(http.MethodGet, getUrl.Href, nil)
+						responseRecorder := httptest.NewRecorder()
+						router.ServeHTTP(responseRecorder, request)
+
+						if assert.Equal(t, http.StatusTemporaryRedirect, responseRecorder.Result().StatusCode) {
+							assert.Equal(t, url, responseRecorder.Result().Header.Get("location"))
+						}
+					}
+				}
+			}
+		}
+	})
+}
+
+func TestRedirectAddAndRead(t *testing.T) {
 	const url = "https://example.com/"
 	const customCode = "_code_"
 	const payload = `{ "url": "` + url + `", "custom_code": "` + customCode + `" }`
 
 	matrix(t, func(t *testing.T, router http.Handler, _ repository.RedirectRepository) {
-		request := httptest.NewRequest("POST", v1ServicePath, strings.NewReader(payload))
-		request.Header.Set("Content-Type", contentTypeJson)
+		request := httptest.NewRequest(http.MethodPost, serviceURL, strings.NewReader(payload))
+		request.Header.Set(headerFieldContentType, contentTypeJson)
 		responseRecorder := httptest.NewRecorder()
 		router.ServeHTTP(responseRecorder, request)
 
 		if assert.Equal(t, http.StatusCreated, responseRecorder.Result().StatusCode) {
-			response := &v1CreateResponse{}
+			response := &createResponse{}
 			err := json.Unmarshal(responseRecorder.Body.Bytes(), response)
 			if assert.NoError(t, err) {
 				assert.Equal(t, url, response.URL)
@@ -203,7 +249,7 @@ func TestV1RedirectAdd(t *testing.T) {
 						return l.T == http.MethodGet
 					})
 					if assert.NotNil(t, getUrl, "Get URL missing") {
-						if assert.Equal(t, v1UrlForCode(customCode), getUrl.Href) {
+						if assert.Equal(t, urlForCode(customCode), getUrl.Href) {
 							request := httptest.NewRequest(http.MethodGet, getUrl.Href, nil)
 							responseRecorder := httptest.NewRecorder()
 							router.ServeHTTP(responseRecorder, request)
@@ -219,13 +265,13 @@ func TestV1RedirectAdd(t *testing.T) {
 	})
 }
 
-func TestV1InvalidateNonExisting(t *testing.T) {
+func TestInvalidateNonExisting(t *testing.T) {
 	const (
 		code  = "code"
 		token = "token"
 	)
 	matrix(t, func(t *testing.T, router http.Handler, repository repository.RedirectRepository) {
-		request := httptest.NewRequest(http.MethodDelete, v1UrlForCodeAndToken(code, token), nil)
+		request := httptest.NewRequest(http.MethodDelete, urlForCodeAndToken(code, token), nil)
 		responseRecorder := httptest.NewRecorder()
 		router.ServeHTTP(responseRecorder, request)
 
@@ -233,7 +279,7 @@ func TestV1InvalidateNonExisting(t *testing.T) {
 	})
 }
 
-func TestV1InvalidateExisting(t *testing.T) {
+func TestInvalidateExisting(t *testing.T) {
 	const (
 		code  = "code"
 		token = "token"
@@ -245,7 +291,7 @@ func TestV1InvalidateExisting(t *testing.T) {
 		})
 
 		if assert.NoError(t, err) {
-			request := httptest.NewRequest(http.MethodDelete, v1UrlForCodeAndToken(code, token), nil)
+			request := httptest.NewRequest(http.MethodDelete, urlForCodeAndToken(code, token), nil)
 			responseRecorder := httptest.NewRecorder()
 			router.ServeHTTP(responseRecorder, request)
 

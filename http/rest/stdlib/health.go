@@ -1,4 +1,4 @@
-package rest
+package stdlib
 
 import (
 	"encoding/json"

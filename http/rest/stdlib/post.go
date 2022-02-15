@@ -1,14 +1,12 @@
-package rest
+package stdlib
 
 import (
 	"errors"
 	"fmt"
 	"hex-microservice/adder"
-	"hex-microservice/meta/value"
 	"io/ioutil"
 	"net/http"
 	"reflect"
-	"strings"
 
 	validate "gopkg.in/dealancer/validate.v2"
 )
@@ -18,21 +16,21 @@ type redirectRequest struct {
 	// mandatory
 	URL string `json:"url" msgpack:"url"  validate:"empty=false & format=url"`
 	// optional
-	CustomCode string `json:"custom_code" msgpack:"custom_code"  validate:"empty=true | gte=5 & lte=25"`
+	CustomCode string `json:"custom_code" msgpack:"custom_code" validate:"empty=true | gte=5 & lte=25"`
 }
 
 // RedirectPost implements the "post" verb of the REST context that creates a new redirect.
-func (h *handler) RedirectPost(mappingUrl, servicePath string) http.HandlerFunc {
+func (h *handler) RedirectPost(mappingUrl string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestBody, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 			h.log.Error(err, "reading document body")
 			return
 		}
 
 		// Converter for different content types
-		contentType := r.Header.Get("Content-Type")
+		contentType := r.Header.Get(headerFieldContentType)
 		converter, ok := h.converters[contentType]
 		if !ok {
 			h.log.Error(nil, "unsupported content type", "contentType", contentType)
@@ -100,18 +98,19 @@ func (h *handler) RedirectPost(mappingUrl, servicePath string) http.HandlerFunc 
 			return
 		}
 
-		// response to client
+		// response to client}
+		result := results[0]
 		asResponse := redirectResponse{
-			Code: results[0].Code,
+			Code: result.Code,
 			URL:  red.URL,
 			Links: []link{
 				{
-					Href: value.Join("/", mappingUrl, v1Prefix, servicePath, results[0].Code),
+					Href: urlForCode(mappingUrl, result.Code),
 					Rel:  resourceName,
 					T:    http.MethodGet,
 				},
 				{
-					Href: strings.Join([]string{mappingUrl, servicePath, results[0].Code, results[0].Token}, "/"),
+					Href: urlForCodeAndToken(mappingUrl, result.Code, result.Token),
 					Rel:  resourceName,
 					T:    http.MethodDelete,
 				},

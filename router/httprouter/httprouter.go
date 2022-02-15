@@ -3,11 +3,10 @@ package httprouter
 import (
 	"hex-microservice/adder"
 	"hex-microservice/health"
-	"hex-microservice/http/rest"
+	"hex-microservice/http/rest/stdlib"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
-	"hex-microservice/meta/value"
-	"hex-microservice/router"
 	"net/http"
 	"time"
 
@@ -15,47 +14,33 @@ import (
 	org "github.com/julienschmidt/httprouter"
 )
 
-type httpRouter struct {
-	log       logr.Logger
-	mappedURL string
-	router    *org.Router
-}
-
 func paramFunc(r *http.Request, key string) string {
 	return org.ParamsFromContext(r.Context()).ByName(key)
-}
-
-// newHttpRouter returns a http.Handler that adapts the service with the use of the httprouter router.
-func New(log logr.Logger, mappedURL string) router.Router {
-	r := org.New()
-	r.HandleMethodNotAllowed = false
-	return &httpRouter{
-		log:       log,
-		mappedURL: mappedURL,
-		router:    r,
-	}
 }
 
 func param(name string) string {
 	return ":" + name
 }
 
-func (hr *httpRouter) MountV1(v1Path string, healthPath string, h health.Service, servicePath string, a adder.Service, l lookup.Service, i invalidator.Service) {
-	service := rest.NewV1(hr.log, h, a, l, i, paramFunc)
+// newHttpRouter returns a http.Handler that adapts the service with the use of the httprouter router.
+func New(log logr.Logger, mappedURL string, mappedPath string, healthPath string, hs health.Service, servicePath string, as adder.Service, ls lookup.Service, is invalidator.Service) http.Handler {
+	router := org.New()
+	router.HandleMethodNotAllowed = false
 
-	hr.router.Handler(http.MethodGet, "/"+value.Join("/", v1Path, healthPath),
-		service.Health(time.Now()))
+	serviceMappedUrl := url.Join(mappedURL, mappedPath, servicePath)
+	handler := stdlib.New(log, hs, as, ls, is, paramFunc)
 
-	hr.router.Handler(http.MethodGet, "/"+value.Join("/", v1Path, servicePath, param(rest.UrlParameterCode)),
-		service.RedirectGet(hr.mappedURL))
+	router.Handler(http.MethodGet, url.AbsPath(mappedPath, healthPath),
+		handler.Health(time.Now()))
 
-	hr.router.Handler(http.MethodPost, "/"+value.Join("/", v1Path, servicePath),
-		service.RedirectPost(hr.mappedURL, servicePath))
+	router.Handler(http.MethodGet, url.AbsPath(mappedPath, servicePath, param(stdlib.UrlParameterCode)),
+		handler.RedirectGet(serviceMappedUrl))
 
-	hr.router.Handler(http.MethodDelete, "/"+value.Join("/", v1Path, servicePath, param(rest.UrlParameterCode), param(rest.UrlParameterToken)),
-		service.RedirectInvalidate(hr.mappedURL))
-}
+	router.Handler(http.MethodPost, url.AbsPath(mappedPath, servicePath),
+		handler.RedirectPost(serviceMappedUrl))
 
-func (hr *httpRouter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	hr.router.ServeHTTP(rw, r)
+	router.Handler(http.MethodDelete, url.AbsPath(mappedPath, servicePath, param(stdlib.UrlParameterCode), param(stdlib.UrlParameterToken)),
+		handler.RedirectInvalidate(serviceMappedUrl))
+
+	return router
 }

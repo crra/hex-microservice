@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"hex-microservice/adder"
 	"hex-microservice/health"
-	"hex-microservice/http/rest"
+	"hex-microservice/http/rest/stdlib"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
-	"hex-microservice/router"
 	"net/http"
 	"strings"
 	"time"
@@ -17,13 +17,10 @@ import (
 )
 
 const (
-	ErrorAlreadyExists    = "already-exists"
-	ErrorDatabase         = "database"
-	ErrorInternal         = "internal"
-	ErrorMalformedJSON    = "malformed-json"
-	ErrorMethodNotAllowed = "method-not-allowed"
-	ErrorNotFound         = "not-found"
-	ErrorValidation       = "validation"
+	ErrorInternal              = "internal"
+	ErrorNotFound              = "not-found"
+	headerFieldContentType     = "content-type"
+	contentTypeJsonWithCharset = "application/json; charset=utf-8"
 )
 
 const varsKey = "UrlParameter"
@@ -69,7 +66,7 @@ func withoutTrailing(path string) string {
 var withoutPrefix = strings.TrimPrefix
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set(headerFieldContentType, contentTypeJsonWithCharset)
 	b, err := json.MarshalIndent(v, "", "    ")
 	if err != nil {
 		http.Error(w, `{"error":"`+ErrorInternal+`"}`, http.StatusInternalServerError)
@@ -94,65 +91,65 @@ func jsonError(w http.ResponseWriter, status int, error string, data map[string]
 }
 
 type goRouter struct {
-	log       logr.Logger
-	mappedURL string
+	log logr.Logger
 
-	v1            rest.HandlerV1
-	v1Path        string
-	v1ServicePath string
-	v1HealthPath  string
+	serviceMappedUrl string
+
+	healthPath  string
+	servicePath string
+
+	handler stdlib.Handler
 }
 
 // New creates a new router inspired by: https://benhoyt.com/writings/web-service-stdlib/.
-func New(log logr.Logger, mappedURL string) router.Router {
+func New(log logr.Logger, mappedURL string, mappedPath string, healthPath string, hs health.Service, servicePath string, as adder.Service, ls lookup.Service, is invalidator.Service) http.Handler {
 	return &goRouter{
-		log:       log,
-		mappedURL: mappedURL,
+		log:              log,
+		serviceMappedUrl: url.Join(mappedURL, mappedPath, servicePath),
+
+		healthPath:  url.AbsPath(mappedPath, healthPath),
+		servicePath: url.AbsPath(mappedPath, servicePath),
+
+		handler: stdlib.New(log, hs, as, ls, is, paramFunc),
 	}
 }
 
-func (gr *goRouter) MountV1(v1Path string, healthPath string, h health.Service, sericePath string, a adder.Service, l lookup.Service, i invalidator.Service) {
-	gr.v1Path = v1Path
-	gr.v1HealthPath = healthPath
-	gr.v1ServicePath = sericePath
+func (gr *goRouter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	path := withoutTrailing(r.URL.Path)
 
-	gr.v1 = rest.NewV1(gr.log, h, a, l, i, paramFunc)
-}
-
-func (gr *goRouter) handleV1(path string, rw http.ResponseWriter, r *http.Request) {
-	gr.log.Info("router", "method", r.Method, "path", "/"+gr.v1Path+path)
+	gr.log.Info("router", "method", r.Method, "path", path)
 
 	// e.g. "/health"
-	if path == gr.v1HealthPath {
+	if path == gr.healthPath {
 		switch r.Method {
 		case http.MethodGet:
-			gr.v1.Health(time.Now())(rw, r)
+			gr.handler.Health(time.Now())(rw, r)
 			return
 		}
 	}
 
-	if strings.HasPrefix(path, gr.v1ServicePath) {
+	if strings.HasPrefix(path, gr.servicePath) {
 		// e.g "/service"
-		if path == gr.v1ServicePath {
+		if path == gr.servicePath {
 			switch r.Method {
 			case http.MethodPost:
-				gr.v1.RedirectPost(gr.mappedURL, gr.v1ServicePath)(rw, r)
+				gr.handler.RedirectPost(gr.serviceMappedUrl)(rw, r)
 				return
 			}
 		}
 
-		if r := match(r, withoutPrefix(path, gr.v1ServicePath+"/"), rest.UrlParameterCode); r != nil {
+		if r := match(r, withoutPrefix(path, gr.servicePath+"/"), stdlib.UrlParameterCode); r != nil {
 			switch r.Method {
 			case http.MethodGet:
-				gr.v1.RedirectGet(gr.mappedURL)(rw, r)
+				gr.handler.RedirectGet(gr.serviceMappedUrl)(rw, r)
 				return
 			}
 		}
 
-		if r := match(r, withoutPrefix(path, gr.v1ServicePath+"/"), rest.UrlParameterCode, rest.UrlParameterToken); r != nil {
+		if r := match(r, withoutPrefix(path, gr.servicePath+"/"), stdlib.UrlParameterCode, stdlib.UrlParameterToken); r != nil {
 			switch r.Method {
 			case http.MethodDelete:
-				gr.v1.RedirectInvalidate(gr.mappedURL)(rw, r)
+				gr.handler.RedirectInvalidate(gr.serviceMappedUrl)(rw, r)
 				return
 			}
 		}
@@ -160,16 +157,4 @@ func (gr *goRouter) handleV1(path string, rw http.ResponseWriter, r *http.Reques
 
 	jsonError(rw, http.StatusNotFound, ErrorNotFound, nil)
 	return
-}
-
-func (gr *goRouter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	path := withoutTrailing(r.URL.Path)
-
-	v1Path := "/" + gr.v1Path + "/"
-	if strings.HasPrefix(path, v1Path) && gr.v1 != nil {
-		gr.handleV1(path[len(v1Path):], rw, r)
-		return
-	}
-
-	jsonError(rw, http.StatusNotFound, ErrorNotFound, nil)
 }

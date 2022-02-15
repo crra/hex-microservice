@@ -3,11 +3,10 @@ package chi
 import (
 	"hex-microservice/adder"
 	"hex-microservice/health"
-	"hex-microservice/http/rest"
+	"hex-microservice/http/rest/stdlib"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
-	"hex-microservice/meta/value"
-	"hex-microservice/router"
 	"net/http"
 	"time"
 
@@ -16,51 +15,36 @@ import (
 	"github.com/go-logr/logr"
 )
 
-type chi struct {
-	log       logr.Logger
-	mappedURL string
-	router    *org.Mux
-}
-
-// New returns a http.Handler that exposes the service with the chi router.
-func New(log logr.Logger, mappedURL string) router.Router {
-	r := org.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.StripSlashes)
-
-	r.NotFound(http.NotFound)
-	r.MethodNotAllowed(http.NotFound)
-
-	return &chi{
-		log:       log,
-		mappedURL: mappedURL,
-		router:    r,
-	}
-}
-
 func param(name string) string {
 	return "{" + name + "}"
 }
 
-func (c *chi) MountV1(v1Path string, healthPath string, h health.Service, servicePath string, a adder.Service, l lookup.Service, i invalidator.Service) {
-	service := rest.NewV1(c.log, h, a, l, i, org.URLParam)
+// New returns a http.Handler that exposes the service with the chi router.
+func New(log logr.Logger, mappedURL string, mappedPath string, healthPath string, hs health.Service, servicePath string, as adder.Service, ls lookup.Service, is invalidator.Service) http.Handler {
+	router := org.NewRouter()
+	router.NotFound(http.NotFound)
+	router.MethodNotAllowed(http.NotFound)
 
-	c.router.Get("/"+value.Join("/", v1Path, healthPath),
-		service.Health(time.Now()))
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
+	router.Use(middleware.Logger)
+	router.Use(middleware.Recoverer)
+	router.Use(middleware.StripSlashes)
 
-	c.router.Get("/"+value.Join("/", v1Path, servicePath, param(rest.UrlParameterCode)),
-		service.RedirectGet(c.mappedURL))
+	serviceMappedUrl := url.Join(mappedURL, mappedPath, servicePath)
+	handler := stdlib.New(log, hs, as, ls, is, org.URLParam)
 
-	c.router.Post("/"+value.Join("/", v1Path, servicePath),
-		service.RedirectPost(c.mappedURL, servicePath))
+	router.Get(url.AbsPath(mappedPath, healthPath),
+		handler.Health(time.Now()))
 
-	c.router.Delete("/"+value.Join("/", v1Path, servicePath, param(rest.UrlParameterCode), param(rest.UrlParameterToken)),
-		service.RedirectInvalidate(c.mappedURL))
-}
+	router.Get(url.AbsPath(mappedPath, servicePath, param(stdlib.UrlParameterCode)),
+		handler.RedirectGet(serviceMappedUrl))
 
-func (c *chi) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	c.router.ServeHTTP(rw, r)
+	router.Post(url.AbsPath(mappedPath, servicePath),
+		handler.RedirectPost(serviceMappedUrl))
+
+	router.Delete(url.AbsPath(mappedPath, servicePath, param(stdlib.UrlParameterCode), param(stdlib.UrlParameterToken)),
+		handler.RedirectInvalidate(serviceMappedUrl))
+
+	return router
 }

@@ -1,4 +1,4 @@
-package rest
+package ginimp
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *ginhandler) RedirectGet(mappingUrl string) gin.HandlerFunc {
+func (h *handler) RedirectGet(mappingUrl string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		code := c.Param(UrlParameterCode)
 

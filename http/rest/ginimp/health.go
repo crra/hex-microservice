@@ -1,4 +1,4 @@
-package rest
+package ginimp
 
 import (
 	"net/http"
@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *ginhandler) Health(now time.Time) gin.HandlerFunc {
+func (h *handler) Health(now time.Time) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h := h.health.Health(now)
 		c.JSON(http.StatusOK, gin.H{

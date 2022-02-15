@@ -2,17 +2,12 @@ package value
 
 import (
 	"reflect"
-	"strings"
 
 	"github.com/fatih/structtag"
 )
 
 func Ident[K comparable](key K) K {
 	return key
-}
-
-func Join(sep string, elements ...string) string {
-	return strings.Join(elements, sep)
 }
 
 // GetFromMap returns an associated value by a given key from a map. In case of key errors (e.g. not found)

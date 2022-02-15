@@ -1,15 +1,15 @@
-package rest
+package stdlib
 
 import (
 	"encoding/json"
 	"hex-microservice/adder"
 	"hex-microservice/health"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/go-logr/logr"
 	"github.com/vmihailenco/msgpack"
 )
@@ -18,7 +18,7 @@ const (
 	UrlParameterCode  = "code"
 	UrlParameterToken = "token"
 
-	v1Prefix = "v1"
+	headerFieldContentType = "content-type"
 
 	contentTypeMessagePack = "application/x-msgpack"
 	contentTypeJson        = "application/json"
@@ -33,15 +33,11 @@ const (
 
 type ParamFn func(r *http.Request, key string) string
 
-type HandlerV1 interface {
+type Handler interface {
 	Health(now time.Time) http.HandlerFunc
 	RedirectGet(mappingUrl string) http.HandlerFunc
-	RedirectPost(mappingUrl, servicePrefix string) http.HandlerFunc
+	RedirectPost(mappingUrl string) http.HandlerFunc
 	RedirectInvalidate(mappingUrl string) http.HandlerFunc
-}
-
-type GinHandler interface {
-	Health(now time.Time) gin.HandlerFunc
 }
 
 type converter struct {
@@ -75,23 +71,20 @@ type handler struct {
 	converters  map[string]converter
 }
 
-type ginhandler struct {
-	log logr.Logger
-
-	// services
-	adder       adder.Service
-	lookup      lookup.Service
-	invalidator invalidator.Service
-	health      health.Service
-	converters  map[string]converter
-}
-
 type ApiError struct {
 	StatusCode int    `json:"status"`
 	Title      string `json:"title"`
 }
 
-func NewV1(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, invalidator invalidator.Service, paramFn ParamFn) HandlerV1 {
+func urlForCode(mappedUrl, code string) string {
+	return url.Join(mappedUrl, code)
+}
+
+func urlForCodeAndToken(mappedUrl, code, token string) string {
+	return url.Join(mappedUrl, code, token)
+}
+
+func New(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, invalidator invalidator.Service, paramFn ParamFn) Handler {
 	return &handler{
 		log:     log,
 		paramFn: paramFn,
@@ -109,26 +102,9 @@ func NewV1(log logr.Logger, health health.Service, adder adder.Service, lookup l
 	}
 }
 
-func NewGinV1(log logr.Logger, health health.Service, adder adder.Service, lookup lookup.Service, invalidator invalidator.Service, paramFn ParamFn) GinHandler {
-	return &ginhandler{
-		log: log,
-
-		health:      health,
-		adder:       adder,
-		lookup:      lookup,
-		invalidator: invalidator,
-		// NOTE: not really sure if this is a good pattern with the lookup table,
-		// but it was taken from the original example.
-		converters: map[string]converter{
-			contentTypeJson:        {json.Unmarshal, json.Marshal},
-			contentTypeMessagePack: {msgpack.Unmarshal, msgpack.Marshal},
-		},
-	}
-}
-
 // writeResponse is a helper function that write the necessary data to the response.
 func writeResponse(w http.ResponseWriter, contentType string, body []byte, statusCode int) error {
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set(headerFieldContentType, contentType)
 	w.WriteHeader(statusCode)
 
 	_, err := w.Write(body)
@@ -145,7 +121,7 @@ func writeApiError(w http.ResponseWriter, log logr.Logger, apiErr ApiError) {
 		return
 	}
 
-	w.Header().Set("Content-Type", contentTypeJson)
+	w.Header().Set(headerFieldContentType, contentTypeJson)
 	http.Error(w, string(errReturn), apiErr.StatusCode)
 	return
 }

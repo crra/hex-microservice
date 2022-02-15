@@ -3,11 +3,10 @@ package gin
 import (
 	"hex-microservice/adder"
 	"hex-microservice/health"
-	"hex-microservice/http/rest"
+	"hex-microservice/http/rest/ginimp"
+	"hex-microservice/http/url"
 	"hex-microservice/invalidator"
 	"hex-microservice/lookup"
-	"hex-microservice/meta/value"
-	"hex-microservice/router"
 	"net/http"
 	"time"
 
@@ -15,32 +14,31 @@ import (
 	"github.com/go-logr/logr"
 )
 
-type ginRouter struct {
-	log       logr.Logger
-	mappedURL string
-	router    *org.Engine
+func param(name string) string {
+	return ":" + name
 }
 
 // newHttpRouter returns a http.Handler that adapts the service with the use of the httprouter router.
-func New(log logr.Logger, mappedURL string) router.Router {
-	r := org.Default()
-	r.HandleMethodNotAllowed = false
+func New(log logr.Logger, mappedURL string, mappedPath string, healthPath string, hs health.Service, servicePath string, as adder.Service, ls lookup.Service, is invalidator.Service) http.Handler {
+	router := org.Default()
+	router.HandleMethodNotAllowed = false
+	router.Use(org.Logger())
+	router.Use(org.Recovery())
 
-	return &ginRouter{
-		log:       log,
-		mappedURL: mappedURL,
-		router:    r,
-	}
-}
+	serviceMappedUrl := url.Join(mappedURL, mappedPath, servicePath)
+	handler := ginimp.New(log, hs, as, ls, is)
 
-func (gr *ginRouter) MountV1(v1Path string, healthPath string, h health.Service, servicePath string, a adder.Service, l lookup.Service, i invalidator.Service) {
-	service := rest.NewGinV1(gr.log, h, a, l, i, func(r *http.Request, key string) string {
-		panic("use 'gin.ShouldBind' instead")
-	})
+	router.GET(url.AbsPath(mappedPath, healthPath),
+		handler.Health(time.Now()))
 
-	gr.router.GET("/"+value.Join("/", v1Path, healthPath), service.Health(time.Now()))
-}
+	router.GET(url.AbsPath(mappedPath, servicePath, param(ginimp.UrlParameterCode)),
+		handler.RedirectGet(serviceMappedUrl))
 
-func (gr *ginRouter) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	gr.router.ServeHTTP(rw, r)
+	router.POST(url.AbsPath(mappedPath, servicePath),
+		handler.RedirectPost(serviceMappedUrl))
+
+	router.DELETE(url.AbsPath(mappedPath, servicePath, param(ginimp.UrlParameterCode), param(ginimp.UrlParameterToken)),
+		handler.RedirectInvalidate(serviceMappedUrl))
+
+	return router
 }
