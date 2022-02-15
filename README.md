@@ -137,11 +137,8 @@ Another architectural style was defined by Jeffrey Palermo a few years later in 
 
 - implement and test mongo backend
 - implement the code generator that creates the conversion code that performs the conversion without runtime inspection (reflection)
-- compare this custom golang lib version (this) with an existing framework like spring boot (e.g. input validation)
-- handle key collisions
 - dockerize (also for macOS)
 - docker-compose with different storage backends
-- custom short ids
 - time to live (ttl)
 - top10 (update on read)
 - internal event sourcing to simulate Command and Query Responsibility Segregation (CQRS)?
