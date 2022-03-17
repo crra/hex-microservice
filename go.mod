@@ -16,7 +16,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.11
 	github.com/spf13/afero v1.8.1
 	github.com/spf13/viper v1.10.1
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.7.1
 	github.com/teris-io/shortid v0.0.0-20201117134242-e59966efd125
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	golang.org/x/tools v0.1.9
