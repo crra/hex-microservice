@@ -14,7 +14,7 @@ require (
 	github.com/jinzhu/gorm v1.9.16
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/mattn/go-sqlite3 v1.14.11
-	github.com/spf13/afero v1.8.1
+	github.com/spf13/afero v1.8.2
 	github.com/spf13/viper v1.10.1
 	github.com/stretchr/testify v1.7.0
 	github.com/teris-io/shortid v0.0.0-20201117134242-e59966efd125
