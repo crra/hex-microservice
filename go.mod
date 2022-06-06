@@ -16,7 +16,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.11
 	github.com/spf13/afero v1.8.2
 	github.com/spf13/viper v1.10.1
-	github.com/stretchr/testify v1.7.1
+	github.com/stretchr/testify v1.7.2
 	github.com/teris-io/shortid v0.0.0-20201117134242-e59966efd125
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	golang.org/x/tools v0.1.10
@@ -65,7 +65,7 @@ require (
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/uint128 v1.2.0 // indirect
 	modernc.org/cc/v3 v3.35.22 // indirect
 	modernc.org/ccgo/v3 v3.15.13 // indirect
