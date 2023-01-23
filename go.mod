@@ -13,7 +13,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/jinzhu/gorm v1.9.16
 	github.com/julienschmidt/httprouter v1.3.0
-	github.com/mattn/go-sqlite3 v1.14.11
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/spf13/afero v1.9.3
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.1
